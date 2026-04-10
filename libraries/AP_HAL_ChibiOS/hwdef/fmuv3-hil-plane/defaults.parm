@@ -1,0 +1,112 @@
+# Default parameters for fmuv3-hil-plane (SITL-on-hardware with X-Plane backend)
+# Conventional plane: CH1=aileron, CH2=elevator, CH3=throttle, CH4=rudder.
+# X-Plane provides physics; SITL sensor backends read from SIMState which
+# is populated by the XPlane UDP data stream.
+
+# ── EKF ──────────────────────────────────────────────────────────────────────
+# EKF3 disabled — gyro not updating with EKF3 on fmuv3 (STM32F427).
+# EKF2 is stable with SITL XPlane backend on this board.
+AHRS_EKF_TYPE 2
+EK2_ENABLE 1
+EK3_ENABLE 0
+
+# Compass: enabled — SITL compass backend reads from SIMState
+COMPASS_USE 1
+
+# GPS: SITL GPS backend (type 100) — reads position/velocity from SIMState
+GPS1_TYPE 100
+
+# Airspeed: SITL backend (reads airspeed from SIMState / X-Plane)
+ARSPD_TYPE 100
+
+# Safety: no safety switch needed in simulation
+BRD_SAFETY_DEFLT 0
+
+# Arming: skip all pre-arm checks for simulation (-1 = skip all)
+ARMING_SKIPCHK -1
+ARMING_REQUIRE 1
+
+# RC: disable throttle failsafe and RC override timeout so the system
+# does not block on "Waiting for RC" when no physical RC is connected.
+# RC_CHANNELS_OVERRIDE (from GCS) is always accepted.
+THR_FAILSAFE 0
+RC_OVERRIDE_TIME -1
+
+# Scheduler: 50 Hz — prevents watchdog reset on STM32F427
+SCHED_LOOP_RATE 50
+
+# Logging: disabled — no SD card
+LOG_BITMASK 0
+LOG_BACKEND_TYPE 0
+LOG_DISARM 0
+
+# SITL speedup: 1x real-time
+SIM_SPEEDUP 1
+
+# ── Servo output functions — conventional plane ───────────────────────────────
+# Maps ArduPlane output channels to surface functions.
+# Must match xplane_plane.json DREF channel assignments.
+SERVO1_FUNCTION 4    # Aileron
+SERVO2_FUNCTION 19   # Elevator
+SERVO3_FUNCTION 70   # Throttle
+SERVO4_FUNCTION 21   # Rudder
+
+# ── RC input channel mapping ──────────────────────────────────────────────────
+# Standard mode-2 Tx: left stick = throttle/yaw, right stick = pitch/roll.
+RCMAP_ROLL      1
+RCMAP_PITCH     2
+RCMAP_THROTTLE  3
+RCMAP_YAW       4
+
+# ── Auto takeoff — ground roll + steering ─────────────────────────────────────
+# Apply full throttle immediately on TKOFF, no acceleration pre-check.
+TKOFF_THR_MINACC 0
+TKOFF_THR_MINSPD 0
+TKOFF_THR_DELAY  0
+TKOFF_THR_MAX    100
+
+# Rotate (pitch up) at this airspeed (m/s) — set to suit the aircraft stall speed.
+TKOFF_ROTATE_SPD 12
+
+# Ground steering active below this altitude AGL (m).
+# Rudder tracks takeoff heading during ground roll.
+GROUND_STEER_ALT 5
+
+# Elevator hold during ground roll: 0 = neutral (tricycle gear).
+TKOFF_TDRAG_ELEV 0
+TKOFF_TDRAG_SPD1 0
+
+# ── SITL servo override ───────────────────────────────────────────────────────
+# SIM_OH_MASK: pass RC hardware input directly to all 8 servo channels.
+# RANGE-type DREFs (throttle) are forced to 0 in SIM_XPlane when disarmed.
+SIM_OH_MASK 255
+
+# ── SITL home position — Bandung WICC ────────────────────────────────────────
+SIM_OPOS_LAT -6.897434
+SIM_OPOS_LNG  107.566887
+SIM_OPOS_ALT  744.0
+SIM_OPOS_HDG  108.0
+
+# ── Tracking target position ──────────────────────────────────────────────────
+TRK_TGT_LAT -6.897367724
+TRK_TGT_LON  107.566559898
+TRK_TGT_ALT  744.0
+
+# ── Networking / PPP ─────────────────────────────────────────────────────────
+# USB (SERIAL0) stays as MAVLink2 — QGC connects directly via USB.
+# PPP runs on TELEM2 (SERIAL2) for X-Plane UDP data.
+# PC command (macOS): sudo pppd /dev/tty.usbserial-XXXX 115200 10.0.0.1:10.0.0.2 noauth local nodetach asyncmap 0 novj nopcomp noaccomp lcp-echo-interval 0
+# PC command (Linux): sudo pppd /dev/ttyUSB0 115200 10.0.0.1:10.0.0.2 noauth local nodetach asyncmap 0 novj nopcomp noaccomp lcp-echo-interval 0
+# asyncmap 0         — disables control-char escaping
+# novj               — disables VJ TCP header compression
+# nopcomp/noaccomp   — disables PPP header compression
+# lcp-echo-interval 0 — disables LCP keepalive (ArduPilot PPP does not reply)
+SERIAL0_PROTOCOL 2
+SERIAL0_BAUD 921
+
+NET_ENABLE 1
+SERIAL2_PROTOCOL 48
+SERIAL2_BAUD 115
+
+# NET_OPTIONS bit 6 (64) = PPP_ECHO_LIMIT_DISABLE
+NET_OPTIONS 64

@@ -70,6 +70,7 @@ public:
 #if MODE_AUTOLAND_ENABLED
         AUTOLAND      = 26,
 #endif
+        TRACKING      = 27,
 
     // Mode number 30 reserved for "offboard" for external/lua control.
     };
@@ -1073,3 +1074,45 @@ protected:
 };
 
 #endif
+
+/*
+  TRACKING mode — visual-servo / seeker-head tracking.
+  Receives (errorx, errory) in radians via LANDING_TARGET MAVLink message:
+    errorx > 0  → target is to the right  → roll right
+    errory > 0  → target is above          → pitch setpoint increases (nose up)
+  Throttle is held constant at TRIM_THROTTLE.
+*/
+class ModeTracking : public Mode
+{
+public:
+
+    Number mode_number() const override { return Number::TRACKING; }
+    const char *name()   const override { return "TRACKING"; }
+    const char *name4()  const override { return "TRAK"; }
+
+    void update() override;
+
+    bool does_auto_navigation() const override { return true; }
+
+    // Called from GCS_MAVLink_Plane when a LANDING_TARGET message arrives
+    void handle_tracking_error(float errorx_rad, float errory_rad);
+
+protected:
+
+    bool _enter() override;
+    void _exit() override;
+
+private:
+
+    float    _errorx_rad;         // horizontal tracking error (+ = right)
+    float    _errory_rad;         // vertical tracking error   (+ = above)
+    uint32_t _last_msg_ms;        // timestamp of last TRACKING message
+    uint32_t _prev_update_ms;     // for dt computation in update()
+    bool     _was_timed_out;      // edge-detect for active → timed-out transition
+    uint32_t _lock_stable_ms;     // timestamp when stable lock was first achieved after entry/re-acq
+    float    _cruise_throttle;    // throttle to use in TRACKING mode (can be set via MAVLink)
+    uint32_t _terminal_entry_ms;  // timestamp when terminal phase was first entered (0 = not yet)
+    float    _kf_x[2];            // Kalman state: [pitch_err (rad), pitch_err_rate (rad/s)]
+    float    _kf_P[4];            // 2x2 covariance row-major: [P00, P01, P10, P11]
+    bool     _kf_initialized;     // true after first measurement has been processed
+};

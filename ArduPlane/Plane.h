@@ -162,6 +162,7 @@ public:
     friend class ModeLoiter;
     friend class ModeAvoidADSB;
     friend class ModeGuided;
+    friend class ModeTracking;
     friend class ModeInitializing;
     friend class ModeManual;
     friend class ModeQStabilize;
@@ -314,6 +315,7 @@ private:
     ModeAvoidADSB mode_avoidADSB;
 #endif
     ModeGuided mode_guided;
+    ModeTracking mode_tracking;
     ModeInitializing mode_initializing;
     ModeManual mode_manual;
 #if HAL_QUADPLANE_ENABLED
@@ -608,6 +610,13 @@ private:
         bool target_heading_limit;
 #endif // AP_PLANE_OFFBOARD_GUIDED_SLEW_ENABLED
     } guided_state;
+
+    // State shared between GCS_MAVLink_Plane and ModeTracking
+    struct TrackingState {
+        float    errorx_rad;      // horizontal error from LANDING_TARGET angle_x
+        float    errory_rad;      // vertical error from LANDING_TARGET angle_y
+        uint32_t last_update_ms;  // time of last LANDING_TARGET message
+    } tracking_state;
 
 #if AP_LANDINGGEAR_ENABLED
     // landing gear state

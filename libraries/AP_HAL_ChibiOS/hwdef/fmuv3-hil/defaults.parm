@@ -1,0 +1,110 @@
+# Default parameters for fmuv3-hil (SITL-on-hardware with X-Plane backend)
+# X-Plane provides physics; SITL sensor backends read from SIMState which
+# is populated by the XPlane UDP data stream.
+
+# ── EKF ──────────────────────────────────────────────────────────────────────
+# EKF3 disabled — gyro not updating with EKF3 on fmuv3 (STM32F427).
+# EKF2 is stable with SITL XPlane backend on this board.
+AHRS_EKF_TYPE 2
+EK2_ENABLE 1
+EK3_ENABLE 0
+
+# Compass: enabled — SITL compass backend reads from SIMState
+COMPASS_USE 1
+
+# GPS: SITL GPS backend (type 100) — reads position/velocity from SIMState
+# which the XPlane backend populates from X-Plane DATA@ row 20/21.
+# GPS1_TYPE=1 (AUTO) tries to detect a real GPS on the serial port and will
+# never find one on fmuv3-hil, leaving GPS undetected.
+GPS1_TYPE 100
+
+# Airspeed: SITL backend (reads airspeed from SIMState / X-Plane)
+ARSPD_TYPE 100
+
+# Safety: no safety switch needed in simulation
+BRD_SAFETY_DEFLT 0
+
+# Arming: skip all pre-arm checks for simulation (-1 = skip all)
+ARMING_SKIPCHK -1
+ARMING_REQUIRE 1
+
+# RC: disable throttle failsafe and RC override timeout so the system
+# does not block on "Waiting for RC" when no physical RC is connected.
+# RC_CHANNELS_OVERRIDE (from test_joystick.py / GCS) is always accepted.
+THR_FAILSAFE 0
+RC_OVERRIDE_TIME -1
+
+# Scheduler: 50 Hz — prevents watchdog reset on STM32F427
+SCHED_LOOP_RATE 50
+
+# Logging: disabled — no SD card
+LOG_BITMASK 0
+LOG_BACKEND_TYPE 0
+LOG_DISARM 0
+
+# SITL speedup: 1x real-time
+SIM_SPEEDUP 1
+
+# ── Auto takeoff — ground roll + steering ─────────────────────────────────────
+# Apply full throttle immediately on TKOFF, no acceleration pre-check.
+TKOFF_THR_MINACC 0
+TKOFF_THR_MINSPD 0
+TKOFF_THR_DELAY 0
+TKOFF_THR_MAX 100
+
+# Rotate (pitch up) at this airspeed (m/s) — set to suit the aircraft stall speed.
+TKOFF_ROTATE_SPD 12
+
+# Ground steering active below this altitude AGL (m).
+# Rudder/nose-wheel tracks takeoff heading during ground roll.
+GROUND_STEER_ALT 5
+
+# Elevator hold during ground roll: 0 = neutral (tricycle gear).
+# Positive = nose-down (taildragger); adjust if the nose rises too early.
+TKOFF_TDRAG_ELEV 0
+TKOFF_TDRAG_SPD1 0
+
+# ── SITL servo override ───────────────────────────────────────────────────────
+# SIM_OH_MASK: pass RC hardware input directly to all 8 servo channels.
+# RANGE-type DREFs (throttle) are forced to 0 in SIM_XPlane when disarmed,
+# so the prop stays idle regardless of RC stick position until armed.
+SIM_OH_MASK 255
+
+# ── SITL home position — Bandung WICC ────────────────────────────────────────
+# Without a valid home the SITL GPS reports 0°N 0°E; EKF2 will not converge
+# and QGC shows no GPS position.  These values must match X-Plane's location.
+SIM_OPOS_LAT -6.897434
+SIM_OPOS_LNG  107.566887
+SIM_OPOS_ALT  744.0
+SIM_OPOS_HDG  108.0
+
+# ── Tracking target position ──────────────────────────────────────────────────
+TRK_TGT_LAT -6.897367724
+TRK_TGT_LON  107.566559898
+TRK_TGT_ALT  744.0
+
+# ── Networking / PPP ─────────────────────────────────────────────────────────
+# USB (SERIAL0) stays as MAVLink2 — QGC connects directly via USB.
+# PPP runs on TELEM2 (SERIAL2) for X-Plane UDP data.
+# PC command (macOS): sudo pppd /dev/tty.usbserial-XXXX 115200 10.0.0.1:10.0.0.2 noauth local nodetach asyncmap 0 novj nopcomp noaccomp lcp-echo-interval 0
+# PC command (Linux): sudo pppd /dev/ttyUSB0 115200 10.0.0.1:10.0.0.2 noauth local nodetach asyncmap 0 novj nopcomp noaccomp lcp-echo-interval 0
+# asyncmap 0         — disables control-char escaping (~20% bandwidth saving)
+# novj               — disables VJ TCP header compression (reduces latency)
+# nopcomp/noaccomp   — disables PPP header compression (simpler framing)
+# lcp-echo-interval 0 — disables LCP keepalive; ArduPilot PPP does not reply
+#                        to LCP Echo-Requests so pppd would drop with
+#                        "Peer not responding" after ~12 s without this flag
+SERIAL0_PROTOCOL 2
+SERIAL0_BAUD 921
+
+NET_ENABLE 1
+SERIAL2_PROTOCOL 48
+SERIAL2_BAUD 115
+
+# NET_OPTIONS bit 6 (64) = PPP_ECHO_LIMIT_DISABLE
+# Without this, lwIP sends LCP echo every 1 s and terminates after 5 failures
+# (~5 s) with "LCP terminated by peer (Peer not responding)".
+NET_OPTIONS 64
+
+# NET_P1: not needed — X-Plane uses the XPlane SITL backend directly via UDP.
+# QGC connects via USB (SERIAL0 MAVLink2), no network endpoint required.

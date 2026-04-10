@@ -1,0 +1,8 @@
+# x86-hil: SITL board for HIL (Hardware-in-the-Loop) with X-Plane on x86/laptop.
+# Inherits the base SITL HAL; no cross-compile toolchain — builds natively.
+# Parameters for the HIL/XPlane session are in defaults.parm.
+include ../sitl/hwdef.dat
+
+# Use the elevon DREF map instead of the default xplane_plane.json.
+# SIM_XPlane checks #ifndef XPLANE_JSON so this define takes precedence.
+define XPLANE_JSON "xplane_elevon.json"

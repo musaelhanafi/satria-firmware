@@ -57,6 +57,7 @@ uint8_t GCS_MAVLINK_Plane::base_mode() const
     case Mode::Number::THERMAL:
     case Mode::Number::AVOID_ADSB:
     case Mode::Number::GUIDED:
+    case Mode::Number::TRACKING:
     case Mode::Number::CIRCLE:
     case Mode::Number::TAKEOFF:
 #if MODE_AUTOLAND_ENABLED
@@ -329,6 +330,15 @@ void GCS_MAVLINK_Plane::send_pid_tuning()
 {
     if (plane.control_mode == &plane.mode_manual) {
         // no PIDs should be used in manual
+        return;
+    }
+
+    // In TRACKING mode stream the custom tracking PIDs on the standard
+    // roll (axis 1) and pitch (axis 2) slots so ground-station PID tools
+    // and seekerctrl.py can read them without extra message types.
+    if (plane.control_mode == &plane.mode_tracking) {
+        send_pid_info(&plane.g2.tracking_roll_pid.get_pid_info(),  PID_TUNING_ROLL,  0.0f);
+        send_pid_info(&plane.g2.tracking_pitch_pid.get_pid_info(), PID_TUNING_PITCH, 0.0f);
         return;
     }
 
@@ -1004,11 +1014,35 @@ void GCS_MAVLINK_Plane::handle_message(const mavlink_message_t &msg)
         handle_set_position_target_global_int(msg);
         break;
 
+    case MAVLINK_MSG_ID_TRACKING_MESSAGE:
+        handle_tracking_message(msg);
+        break;
+
     default:
         GCS_MAVLINK::handle_message(msg);
         break;
     } // end switch
 } // end handle mavlink
+
+/*
+  Handle TRACKING_MESSAGE for TRACKING mode.
+  errorx/errory are normalised in [-1, 1].
+  Converted to radians using TRACKING_MAX_DEG before passing to the PID.
+*/
+void GCS_MAVLINK_Plane::handle_tracking_message(const mavlink_message_t &msg)
+{
+    mavlink_tracking_message_t pkt;
+    mavlink_msg_tracking_message_decode(&msg, &pkt);
+
+    if (plane.control_mode != &plane.mode_tracking) {
+        return;
+    }
+
+    const float max_rad = plane.g2.tracking_max_deg.get() * (M_PI / 180.0f);
+    plane.mode_tracking.handle_tracking_error(
+        pkt.errorx * max_rad,
+        pkt.errory * max_rad);
+}
 
 void GCS_MAVLINK_Plane::handle_set_attitude_target(const mavlink_message_t &msg)
     {

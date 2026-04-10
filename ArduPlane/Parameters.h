@@ -587,6 +587,28 @@ public:
     
     AP_Int8         axis_bitmask; // axes to be autotuned
 
+    // Tracking mode PID controllers (error input in degrees, output in centidegrees)
+    // Roll  defaults: P=200 cd/deg, I=10, D=5,   imax=3000 cd (30 deg)
+    // Pitch defaults: P=100 cd/deg, I=500, D=0,  imax=3000 cd (30 deg)
+    AC_PID tracking_roll_pid {200.0f, 10.0f,  5.0f, 0.0f, 3000.0f, 0.0f, 0.0f, 20.0f, 0.0f};
+    AC_PID tracking_pitch_pid{100.0f, 500.0f, 0.0f, 0.0f, 3000.0f, 0.0f, 0.0f, 20.0f, 0.0f};
+    AP_Float tracking_max_deg;       // TRK_MAX_DEG:      max roll/pitch delta from a full-scale error (deg)
+    AP_Float tracking_deadband_deg;  // TRK_DBAND:        ignore errors smaller than this (deg)
+    AP_Int16 tracking_timeout_ms;    // TRK_TIMEOUT:      signal loss timeout (ms)
+    AP_Float tracking_pitch_offset;  // TRK_PITCH_OFFSET: constant pitch bias added to setpoint (deg)
+    AP_Float tracking_term_alt;      // TRK_TERM_ALT:     altitude margin above target MSL below which terminal phase activates (m)
+    AP_Float tracking_term_pitch;    // TRK_TERM_PTCH:    extra pitch-down bias (deg) applied in terminal phase to counter throttle-induced nose-up
+    AP_Float tracking_app_spd;       // TRK_APP_SPD:      approach target airspeed (m/s); 0 = use TRIM_THROTTLE open-loop
+    AP_Float tracking_settle_s;      // TRK_SETTLE_S:     seconds to hold cruise throttle after mode entry / re-acquisition before enabling speed control
+    AP_Float tracking_target_alt_msl;// TRK_TGT_ALT:     target MSL altitude (m); terminal phase activates when (current_alt_msl - target_alt_msl) <= TRK_TERM_ALT
+    AP_Float tracking_target_lat;    // TRK_TGT_LAT:     target latitude (decimal degrees)
+    AP_Float tracking_target_lon;    // TRK_TGT_LON:     target longitude (decimal degrees)
+    AP_Float tracking_throt_lead;    // TRK_THR_LEAD:    Kalman prediction horizon (s)
+    AP_Float tracking_kf_q;          // TRK_KF_Q:        Kalman process noise for pitch rate (rad^2/s^3)
+    AP_Float tracking_kf_r;          // TRK_KF_R:        Kalman measurement noise for pitch error (rad^2)
+    // Throttle defaults: P=10 %/rad, I=2, D=0, imax=50 %
+    AC_PID tracking_throt_pid{10.0f, 2.0f, 0.0f, 0.0f, 50.0f, 0.0f, 0.0f, 20.0f, 0.0f};
+
 #if AP_RANGEFINDER_ENABLED
     // orientation of rangefinder to use for landing
     AP_Int8 rangefinder_land_orient;

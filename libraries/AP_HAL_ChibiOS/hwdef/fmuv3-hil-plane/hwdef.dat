@@ -1,0 +1,69 @@
+# hwdef for fmuv3-hil-plane
+# fmuv3 (Pixhawk1) SITL-on-hardware with X-Plane as the physics backend.
+# Conventional plane layout: CH1=aileron, CH2=elevator, CH3=throttle, CH4=rudder.
+#
+# Architecture:
+#   - AP_SIM_FRAME_CLASS=XPlane: SITL connects directly to X-Plane via UDP.
+#   - PPP over TELEM2 serial gives the Pixhawk an IP address to reach X-Plane.
+#     PC: sudo pppd /dev/ttyUSBx 115200 10.0.0.1:10.0.0.2 noauth local
+#   - SITL sends aileron/elevator/throttle/rudder DREFs to X-Plane.
+#   - SIMState (GPS/IMU/Baro/Compass backends) reads from X-Plane data.
+#   - Safety switch disabled; servos output immediately on boot.
+#
+# Build:
+#   ./waf configure --board fmuv3-hil-plane
+#   ./waf plane
+#
+# X-Plane setup:
+#   Settings → Net Connections → Data: send DATA@ to 10.0.0.2:49001
+#   Rows: 3 (speed), 4 (Gload), 16 (ang vel), 17 (pitch/roll/hdg),
+#         20 (lat/lon/alt), 21 (local vel)
+
+include ../fmuv3/hwdef.dat
+
+# ── SITL framework ────────────────────────────────────────────────────────────
+env SIM_ENABLED 1
+
+define AP_SIM_FRAME_CLASS XPlane
+define AP_SIM_FRAME_STRING "xplane:10.0.0.1"
+
+# JSON DREF map for conventional plane (aileron/elevator/throttle/rudder)
+define XPLANE_JSON "@ROMFS/xplane_plane.json"
+
+define AP_SIM_INS_FILE_ENABLED 0
+
+# ── hardware overrides ────────────────────────────────────────────────────────
+undef HAL_HAVE_SAFETY_SWITCH
+define HAL_HAVE_SAFETY_SWITCH 0
+
+define HAL_LOGGING_FILESYSTEM_ENABLED 0
+define AP_MAVLINK_FTP_ENABLED 0
+
+# ── Memory optimisations for STM32F427 (256 KB RAM) ──────────────────────────
+define HAL_NAVEKF3_AVAILABLE 0
+
+define EK3_FEATURE_BODY_ODOM 0
+define EK3_FEATURE_EXTERNAL_NAV 0
+define EK3_FEATURE_DRAG_FUSION 0
+
+define HAL_COMPASS_MAX_SENSORS 1
+
+define HAL_ADSB_ENABLED 0
+define HAL_MOUNT_ENABLED 0
+define HAL_PROXIMITY_ENABLED 0
+define HAL_VISUALODOM_ENABLED 0
+define HAL_GENERATOR_ENABLED 0
+define HAL_CRSF_TELEM_ENABLED 0
+define HAL_HOTT_TELEM_ENABLED 0
+define HAL_SUPPORT_RCOUT_SERIAL 0
+define AP_LANDINGGEAR_ENABLED 0
+
+# ── Networking: PPP over serial ───────────────────────────────────────────────
+define AP_NETWORKING_BACKEND_PPP 1
+define TCPIP_THREAD_STACKSIZE 4096
+define AP_NETWORKING_PORT_STACK_SIZE 2048
+define PPP_BUFSIZE_RX 8192
+define PPP_BUFSIZE_TX 16384
+
+# ROMFS: embed the X-Plane DREF map so no SD card is needed
+ROMFS xplane_plane.json Tools/autotest/models/xplane_plane.json

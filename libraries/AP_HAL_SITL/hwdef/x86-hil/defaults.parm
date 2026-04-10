@@ -1,0 +1,87 @@
+# Default parameters for x86-hil (SITL-on-laptop with X-Plane backend)
+# Target machine: x86 PC / laptop running ArduPlane as SITL binary.
+# X-Plane provides physics; SITL sensor backends read from SIMState which
+# is populated by the XPlane UDP data stream.
+#
+# Build:  ./waf configure --board sitl && ./waf plane
+# Run:    sim_vehicle.py -v ArduPlane -f plane-elevon-x86-hil --model xplane
+#
+# Differences from fmuv3-hil:
+#   - EKF3 enabled  (no STM32F427 gyro limitation on x86)
+#   - No SCHED_LOOP_RATE cap (x86 scheduler can handle 400 Hz)
+#   - Logging enabled to disk (no SD-card constraint)
+#   - No PPP/NET setup (SITL XPlane backend uses direct UDP sockets)
+
+# ── EKF ──────────────────────────────────────────────────────────────────────
+# EKF3 is preferred on x86; no hardware gyro update-rate issue.
+AHRS_EKF_TYPE 3
+EK3_ENABLE 1
+EK2_ENABLE 0
+
+# ── Sensors — SITL backends ──────────────────────────────────────────────────
+# All sensor backends read from SIMState, which the XPlane backend populates
+# from the X-Plane DATA@ / DREF stream.
+COMPASS_USE 1
+GPS1_TYPE 100
+ARSPD_TYPE 100
+
+# ── Safety / arming ───────────────────────────────────────────────────────────
+# No physical safety switch in simulation.
+BRD_SAFETY_DEFLT 0
+
+# Skip all pre-arm checks; require arming (so GCS arm command is needed).
+ARMING_SKIPCHK -1
+ARMING_REQUIRE 1
+
+# ── RC ───────────────────────────────────────────────────────────────────────
+# Disable throttle failsafe and RC override timeout so the system does not
+# block on "Waiting for RC" when no physical RC is connected.
+# RC_CHANNELS_OVERRIDE (from test_joystick.py / GCS) is always accepted.
+THR_FAILSAFE 0
+RC_OVERRIDE_TIME -1
+
+# ── SITL speedup ─────────────────────────────────────────────────────────────
+# 1× real-time — must match X-Plane's simulation speed.
+SIM_SPEEDUP 1
+
+# ── Auto takeoff — ground roll + steering ─────────────────────────────────────
+# Apply full throttle immediately on TKOFF, no acceleration pre-check.
+TKOFF_THR_MINACC 0
+TKOFF_THR_MINSPD 0
+TKOFF_THR_DELAY 0
+TKOFF_THR_MAX 100
+
+# Rotate (pitch up) at this airspeed (m/s) — set to suit the aircraft stall speed.
+TKOFF_ROTATE_SPD 12
+
+# Ground steering active below this altitude AGL (m).
+GROUND_STEER_ALT 5
+
+# Elevator hold during ground roll: 0 = neutral (tricycle gear).
+TKOFF_TDRAG_ELEV 0
+TKOFF_TDRAG_SPD1 0
+
+# ── SITL servo override ───────────────────────────────────────────────────────
+# SIM_OH_MASK: pass RC hardware input directly to all 8 servo channels.
+# RANGE-type DREFs (throttle) are forced to 0 in SIM_XPlane when disarmed,
+# so the prop stays idle regardless of RC stick position until armed.
+SIM_OH_MASK 255
+
+# ── SITL home position — Bandung WICC ─────────────────────────────────────────
+# Without a valid home the SITL GPS reports 0°N 0°E; EKF will not converge
+# and GCS shows no GPS position.  These values must match X-Plane's location.
+SIM_OPOS_LAT -6.897434
+SIM_OPOS_LNG  107.566887
+SIM_OPOS_ALT  744.0
+SIM_OPOS_HDG  108.0
+
+# ── Tracking target position ──────────────────────────────────────────────────
+TRK_TGT_LAT -6.897367724
+TRK_TGT_LON  107.566559898
+TRK_TGT_ALT  744.0
+
+# ── Networking ────────────────────────────────────────────────────────────────
+# On x86/SITL the XPlane backend communicates via direct UDP sockets managed
+# inside the SITL process — no PPP tunnel or NET_ENABLE/SERIAL2 required.
+# GCS (QGC / MAVProxy) connects to the SITL MAVLink TCP port (default 5760)
+# or UDP 14550 as usual.
