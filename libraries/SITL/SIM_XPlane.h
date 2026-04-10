@@ -65,6 +65,8 @@ private:
     const char *xplane_ip = "127.0.0.1";
     uint16_t xplane_port = 49000;
     uint16_t bind_port = 49001;
+    char xplane_ip_buf[32] {};
+    bool elevons = false;
     // udp socket, input and output
     SocketAPM_native socket_in{true};
     SocketAPM_native socket_out{true};
@@ -87,13 +89,16 @@ private:
         ANGLE = 0,
         RANGE = 1,
         FIXED = 2,
+        ELEVON_AILERON  = 3,  // recovers aileron  from two elevon channels
+        ELEVON_ELEVATOR = 4,  // recovers elevator from two elevon channels
     };
 
     struct DRef {
         struct DRef *next;
         char *name;
         DRefType type;
-        uint8_t channel;
+        uint8_t channel;   // primary channel (elevon_right for elevon types)
+        uint8_t channel2;  // secondary channel (elevon_left for elevon types)
         float range;
         float fixed_value;
     };
@@ -125,8 +130,15 @@ private:
     void add_dref(const char *name, DRefType type, const AP_JSON::value &dref);
     void add_joyinput(const char *name, JoyType type, const AP_JSON::value &d);
     void handle_setting(const AP_JSON::value &d);
+    void handle_engine_state(void);
+    void bind_socket(void);
 
     void check_reload_dref(void);
+
+    bool last_armed = false;
+    bool socket_bound = false;
+    uint32_t arm_time_ms = 0;       // millis() when last armed
+    bool engine_cranking = false;   // true while holding starter (ignition=4)
 
     uint32_t xplane_version;
 };

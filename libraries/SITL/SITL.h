@@ -621,6 +621,10 @@ public:
     // clamp simulation - servo channel starting at offset 1 (usually ailerons)
     AP_Int8 clamp_ch;
 
+#if AP_SIM_XPLANE_ENABLED
+    AP_Int16 xplane_bind_port;
+#endif
+
 #if AP_SIM_INS_FILE_ENABLED
     enum INSFileMode {
         INS_FILE_NONE = 0,

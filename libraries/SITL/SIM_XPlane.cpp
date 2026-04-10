@@ -21,6 +21,7 @@
 #if AP_SIM_XPLANE_ENABLED
 
 #include "SIM_XPlane.h"
+#include "SITL.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -44,6 +45,7 @@ extern const AP_HAL::HAL& hal;
 #else
 #define XPLANE_JSON "xplane_plane.json"
 #endif
+#define XPLANE_JSON_ELEVON "xplane_plane_elevon.json"
 
 // DATA@ frame types. Thanks to TauLabs xplanesimulator.h
 // (which strangely enough acknowledges APM as a source!)
@@ -96,14 +98,33 @@ XPlane::XPlane(const char *frame_str) :
     Aircraft(frame_str)
 {
     use_time_sync = false;
+#if defined(AP_SIM_XPLANE_ELEVON)
+    elevons = true;
+#else
+    if (strstr(frame_str, "-elevon")) {
+        elevons = true;
+    }
+#endif
     const char *colon = strchr(frame_str, ':');
     if (colon) {
-        xplane_ip = colon+1;
+        const char *ip_start = colon + 1;
+        const char *colon2 = strchr(ip_start, ':');
+        if (colon2) {
+            size_t ip_len = colon2 - ip_start;
+            if (ip_len >= sizeof(xplane_ip_buf)) {
+                ip_len = sizeof(xplane_ip_buf) - 1;
+            }
+            memcpy(xplane_ip_buf, ip_start, ip_len);
+            xplane_ip_buf[ip_len] = '\0';
+            xplane_ip = xplane_ip_buf;
+            bind_port = atoi(colon2 + 1);
+        } else {
+            xplane_ip = ip_start;
+        }
     }
 
-    socket_in.bind("0.0.0.0", bind_port);
-    printf("Waiting for XPlane data on UDP port %u and sending to port %u\n",
-           (unsigned)bind_port, (unsigned)xplane_port);
+    // actual bind is deferred to first update() so SIM_XP_BIND_PORT param
+    // (loaded after construction) can override the port from the frame string
 
     // XPlane sensor data is not good enough for EKF. Use fake EKF by default
     AP_Param::set_default_by_name("AHRS_EKF_TYPE", 10);
@@ -117,8 +138,9 @@ XPlane::XPlane(const char *frame_str) :
     AP_Param::set_default_by_name("SERVO5_MAX", 2000);
 #endif
 
-    if (!load_dref_map(XPLANE_JSON)) {
-        AP_HAL::panic("%s failed to load", XPLANE_JSON);
+    const char *xplane_json = elevons ? XPLANE_JSON_ELEVON : XPLANE_JSON;
+    if (!load_dref_map(xplane_json)) {
+        AP_HAL::panic("%s failed to load", xplane_json);
     }
 }
 
@@ -141,6 +163,9 @@ void XPlane::add_dref(const char *name, DRefType type, const AP_JSON::value &dre
     } else {
         d->range = dref.get("range").get<double>();
         d->channel = dref.get("channel").get<double>();
+        if (d->type == DRefType::ELEVON_AILERON || d->type == DRefType::ELEVON_ELEVATOR) {
+            d->channel2 = dref.get("channel2").get<double>();
+        }
     }
     // add to linked list
     d->next = drefs;
@@ -247,6 +272,10 @@ bool XPlane::load_dref_map(const char *map_json)
                 add_dref(label, DRefType::RANGE, d);
             } else if (strcmp(type_s, "fixed") == 0) {
                 add_dref(label, DRefType::FIXED, d);
+            } else if (strcmp(type_s, "elevon_aileron") == 0) {
+                add_dref(label, DRefType::ELEVON_AILERON, d);
+            } else if (strcmp(type_s, "elevon_elevator") == 0) {
+                add_dref(label, DRefType::ELEVON_ELEVATOR, d);
             } else {
                 ::printf("Invalid dref type %s for %s in %s", type_s, label, map_filename);
             }
@@ -633,6 +662,24 @@ void XPlane::send_drefs(const struct sitl_input &input)
             send_dref(d->name, d->fixed_value);
             break;
         }
+
+        case DRefType::ELEVON_AILERON: {
+            // ch1 = left elevon (servo1) PWM, ch2 = right elevon (servo2) PWM [1000, 2000]
+            // pitch = (ch1 - ch2) / 1000
+            const float ch1 = input.servos[d->channel-1];
+            const float ch2 = input.servos[d->channel2-1];
+            send_dref(d->name, d->range * (ch1 - ch2) / 1000.0f);
+            break;
+        }
+
+        case DRefType::ELEVON_ELEVATOR: {
+            // ch1 = left elevon (servo1) PWM, ch2 = right elevon (servo2) PWM [1000, 2000]
+            // roll = (ch1 + ch2 - 3000) / 1000
+            const float ch1 = input.servos[d->channel-1];
+            const float ch2 = input.servos[d->channel2-1];
+            send_dref(d->name, d->range * (ch1 + ch2 - 3000.0f) / 1000.0f+0.5);
+            break;
+        }
         }
     }
 }
@@ -679,13 +726,106 @@ void XPlane::request_drefs(void)
 }
 
 /*
+  send engine start or stop commands to X-Plane when arm state changes.
+  Arm   → mixture full rich + ignition start → engine running.
+  Disarm → ignition off + mixture cutoff    → engine stopped.
+  Up to 4 engines are handled to match the throttle DREFs in the JSON map.
+*/
+void XPlane::handle_engine_state(void)
+{
+    if (!connected) {
+        return;
+    }
+
+    const bool armed = hal.util->get_soft_armed();
+    const uint32_t now = AP_HAL::millis();
+
+    // on arm/disarm transition
+    if (armed != last_armed) {
+        last_armed = armed;
+
+        if (armed) {
+            ::printf("XPlane: arming - starting engines\n");
+            arm_time_ms = now;
+            engine_cranking = true;
+
+            // battery on + mixture full rich
+            for (uint8_t i = 0; i < 4; i++) {
+                char dref[64];
+                snprintf(dref, sizeof(dref),
+                         "sim/cockpit2/electrical/battery_on[%u]", i);
+                send_dref(dref, 1.0f);
+                snprintf(dref, sizeof(dref),
+                         "sim/cockpit2/engine/actuators/mixture_ratio[%u]", i);
+                send_dref(dref, 1.0f);
+            }
+        } else {
+            ::printf("XPlane: disarming - stopping engines\n");
+            engine_cranking = false;
+
+            for (uint8_t i = 0; i < 4; i++) {
+                char dref[64];
+                snprintf(dref, sizeof(dref),
+                         "sim/cockpit2/engine/actuators/ignition_key[%u]", i);
+                send_dref(dref, 0.0f);  // 0 = off
+                snprintf(dref, sizeof(dref),
+                         "sim/cockpit2/engine/actuators/mixture_ratio[%u]", i);
+                send_dref(dref, 0.0f);  // cutoff
+                snprintf(dref, sizeof(dref),
+                         "sim/cockpit2/electrical/battery_on[%u]", i);
+                send_dref(dref, 0.0f);
+            }
+        }
+    }
+
+    // while armed: hold ignition=4 (start/crank) for 2 s, then switch to 3 (both magnetos on)
+    if (armed) {
+        const uint32_t elapsed = now - arm_time_ms;
+        const float ignition = (elapsed < 2000) ? 4.0f : 3.0f;  // 4=start, 3=both magnetos
+        if (engine_cranking && elapsed >= 2000) {
+            engine_cranking = false;
+            ::printf("XPlane: engine started - magnetos on\n");
+        }
+        for (uint8_t i = 0; i < 4; i++) {
+            char dref[64];
+            snprintf(dref, sizeof(dref),
+                     "sim/cockpit2/engine/actuators/ignition_key[%u]", i);
+            send_dref(dref, ignition);
+        }
+    }
+}
+
+/*
+  bind the input socket, called once on first update() so that the
+  SIM_XP_BIND_PORT parameter (loaded after construction) can override
+  the port parsed from the frame string.
+*/
+void XPlane::bind_socket(void)
+{
+    auto *sitl = AP::sitl();
+    if (sitl != nullptr && sitl->xplane_bind_port > 0) {
+        bind_port = (uint16_t)sitl->xplane_bind_port.get();
+    }
+    socket_in.bind("0.0.0.0", bind_port);
+    printf("Waiting for XPlane data on UDP port %u and sending to port %u\n",
+           (unsigned)bind_port, (unsigned)xplane_port);
+    socket_bound = true;
+}
+
+/*
   update the XPlane simulation by one time step
  */
 void XPlane::update(const struct sitl_input &input)
 {
+    if (!socket_bound) {
+        bind_socket();
+    }
+
     if (receive_data()) {
         send_drefs(input);
     }
+
+    handle_engine_state();
 
     uint32_t now = AP_HAL::millis();
     if (report.last_report_ms == 0) {

@@ -42,7 +42,9 @@
 #define HAL_STORAGE_SIZE_AVAILABLE  HAL_STORAGE_SIZE
 #define HAL_BOARD_LOG_DIRECTORY "logs"
 #define HAL_BOARD_TERRAIN_DIRECTORY "terrain"
+#ifndef HAL_PARAM_DEFAULTS_PATH
 #define HAL_PARAM_DEFAULTS_PATH nullptr
+#endif
 #define HAL_INS_DEFAULT HAL_INS_NONE
 
 // simulated LEDs are disabled by default as they lead to a large
