@@ -12,18 +12,40 @@
 #   - Logging enabled to disk (no SD-card constraint)
 #   - No PPP/NET setup (SITL XPlane backend uses direct UDP sockets)
 
-# ── EKF ──────────────────────────────────────────────────────────────────────
-# EKF3 is preferred on x86; no hardware gyro update-rate issue.
-AHRS_EKF_TYPE 3
+# ── AHRS / attitude source ────────────────────────────────────────────────────
+# AHRS_EKF_TYPE 10 = SIM (AP_AHRS_SIM backend).
+# Attitude and heading are read DIRECTLY from the SITL FDM state (fdm.quaternion),
+# which SIM_XPlane.cpp populates from X-Plane's PitchRollHeading DATA@ frame.
+# This guarantees zero-lag heading agreement with X-Plane.
+#
+# Why NOT EKF3 here:
+#   With AHRS_EKF_TYPE 3, heading is estimated by fusing gyros + simulated compass.
+#   The simulated compass is derived from the DCM (from X-Plane), but EKF3 must
+#   first converge — during which compass heading diverges from X-Plane heading.
+#   SIM_XPlane.cpp itself sets "AHRS_EKF_TYPE=10" as its default for this reason.
+AHRS_EKF_TYPE 10
 EK3_ENABLE 1
 EK2_ENABLE 0
 
 # ── Sensors — SITL backends ──────────────────────────────────────────────────
 # All sensor backends read from SIMState, which the XPlane backend populates
 # from the X-Plane DATA@ / DREF stream.
-COMPASS_USE 1
 GPS1_TYPE 100
 ARSPD_TYPE 100
+
+# ── Compass — SITL backend ────────────────────────────────────────────────────
+# There is no COMPASS_TYPE param.  In a SITL binary AP_Compass_SITL is
+# auto-instantiated for every SIM_MAGx_DEVID that is non-zero (defaults have
+# 7 non-zero IDs → 7 phantom compasses).  Keep only the first; zero the rest.
+# The SITL compass reads from sitl->state.bodyMagField which SIM_XPlane sets
+# via update_mag_field_bf() using the X-Plane DCM + WMM at the sim position.
+# With AHRS_EKF_TYPE 10, heading does NOT come from the compass — it comes
+# directly from X-Plane fdm.quaternion.  Compass is kept for pre-arm health.
+COMPASS_USE  1
+COMPASS_USE2 0
+COMPASS_USE3 0
+SIM_MAG2_DEVID 0
+SIM_MAG3_DEVID 0
 
 # ── Safety / arming ───────────────────────────────────────────────────────────
 # No physical safety switch in simulation.
