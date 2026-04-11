@@ -1387,7 +1387,7 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @Range: -90 90
     // @Increment: 0.000001
     // @User: Standard
-    AP_GROUPINFO("TRK_TGT_LAT", 56, ParametersG2, tracking_target_lat, -6.897434f),
+    AP_GROUPINFO("TRK_TGT_LAT", 56, ParametersG2, tracking_target_lat, -6.897367724f),
 
     // @Param: TRK_TGT_LON
     // @DisplayName: Tracking target longitude
@@ -1396,7 +1396,7 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @Range: -180 180
     // @Increment: 0.000001
     // @User: Standard
-    AP_GROUPINFO("TRK_TGT_LON", 57, ParametersG2, tracking_target_lon, 107.566887f),
+    AP_GROUPINFO("TRK_TGT_LON", 57, ParametersG2, tracking_target_lon, 107.566559898f),
 
     // @Param: TRK_THR_LEAD
     // @DisplayName: Kalman prediction horizon
@@ -1422,6 +1422,15 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @Increment: 0.001
     // @User: Advanced
     AP_GROUPINFO("TRK_KF_R", 60, ParametersG2, tracking_kf_r, 0.01f),
+
+    // @Param: TRK_CLOSE_M
+    // @DisplayName: Tracking close radius
+    // @Description: Horizontal distance (m) within which the target is considered close. A GCS alert is sent when the drone crosses this threshold. 0 disables.
+    // @Units: m
+    // @Range: 0 10000
+    // @Increment: 10
+    // @User: Standard
+    AP_GROUPINFO("TRK_CLOSE_M", 61, ParametersG2, tracking_close_m, 1000.0f),
 
     AP_GROUPEND
 };

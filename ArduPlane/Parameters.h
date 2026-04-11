@@ -603,6 +603,7 @@ public:
     AP_Float tracking_target_alt_msl;// TRK_TGT_ALT:     target MSL altitude (m); terminal phase activates when (current_alt_msl - target_alt_msl) <= TRK_TERM_ALT
     AP_Float tracking_target_lat;    // TRK_TGT_LAT:     target latitude (decimal degrees)
     AP_Float tracking_target_lon;    // TRK_TGT_LON:     target longitude (decimal degrees)
+    AP_Float tracking_close_m;       // TRK_CLOSE_M:     horizontal proximity threshold (m); GCS alert when drone enters/exits this radius
     AP_Float tracking_throt_lead;    // TRK_THR_LEAD:    Kalman prediction horizon (s)
     AP_Float tracking_kf_q;          // TRK_KF_Q:        Kalman process noise for pitch rate (rad^2/s^3)
     AP_Float tracking_kf_r;          // TRK_KF_R:        Kalman measurement noise for pitch error (rad^2)

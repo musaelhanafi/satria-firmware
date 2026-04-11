@@ -48,7 +48,9 @@ bool ModeTracking::_enter()
     _kf_P[1]        = 0.0f;  // P01
     _kf_P[2]        = 0.0f;  // P10
     _kf_P[3]        = 1.0f;  // P11
-    _kf_initialized = false;
+    _kf_initialized     = false;
+    _close_enough_prev  = false;
+    _last_dist_log_ms   = 0;
     plane.g2.tracking_roll_pid.reset_I();
     plane.g2.tracking_roll_pid.reset_filter();
     plane.g2.tracking_pitch_pid.reset_I();
@@ -115,6 +117,34 @@ void ModeTracking::update()
     const float target_alt_msl  = plane.g2.tracking_target_alt_msl.get();
     const bool  in_terminal     = (term_alt > 0.0f &&
                                    (current_alt_msl - target_alt_msl) <= term_alt);
+
+    // Horizontal distance to target using TRK_TGT_LAT / TRK_TGT_LON.
+    // Mirrors seekerctrl.py _dist_to_target_m() (haversine via Location::get_distance).
+    const Location target_loc(
+        (int32_t)(plane.g2.tracking_target_lat.get() * 1.0e7f),
+        (int32_t)(plane.g2.tracking_target_lon.get() * 1.0e7f),
+        0, Location::AltFrame::ABSOLUTE);
+    const float horiz_dist_m = plane.current_loc.get_distance(target_loc);
+    const float close_m      = plane.g2.tracking_close_m.get();
+    const bool  close_enough = (close_m > 0.0f) && (horiz_dist_m <= close_m);
+
+    // GCS alert on close_enough edge (entry and exit).
+    if (close_enough != _close_enough_prev) {
+        gcs().send_text(close_enough ? MAV_SEVERITY_WARNING : MAV_SEVERITY_INFO,
+                        "Tracking: %.0fm %s TRK_CLOSE_M (%.0fm)",
+                        (double)horiz_dist_m,
+                        close_enough ? "<=" : ">",
+                        (double)close_m);
+        _close_enough_prev = close_enough;
+    }
+
+    // Periodic 1 Hz console log: distance, terminal and close flags, altitude.
+    if (now_ms - _last_dist_log_ms >= 1000U) {
+        _last_dist_log_ms = now_ms;
+        ::printf("TRK dist=%.1fm close=%d term=%d alt=%.1fm\n",
+                 (double)horiz_dist_m, (int)close_enough,
+                 (int)in_terminal, (double)current_alt_msl);
+    }
 
     // Settle ramp — computed here so throttle can also use it.
     // During timeout _lock_stable_ms is cleared, so ramp stays 0 until re-acquisition.

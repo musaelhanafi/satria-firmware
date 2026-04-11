@@ -1115,4 +1115,6 @@ private:
     float    _kf_x[2];            // Kalman state: [pitch_err (rad), pitch_err_rate (rad/s)]
     float    _kf_P[4];            // 2x2 covariance row-major: [P00, P01, P10, P11]
     bool     _kf_initialized;     // true after first measurement has been processed
+    bool     _close_enough_prev;  // previous close_enough state for edge detection
+    uint32_t _last_dist_log_ms;   // timestamp of last distance printf (rate-limited to ~1 Hz)
 };
