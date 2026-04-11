@@ -666,19 +666,19 @@ void XPlane::send_drefs(const struct sitl_input &input)
         }
 
         case DRefType::ELEVON_AILERON: {
-            // ch1 = left elevon (servo1) PWM, ch2 = right elevon (servo2) PWM [1000, 2000]
-            // pitch = (ch1 - ch2) / 1000
-            const float ch1 = input.servos[d->channel-1];
-            const float ch2 = input.servos[d->channel2-1];
+            // ch1 = right elevon (channel2) PWM, ch2 = left elevon (channel) PWM [1000, 2000]
+            // roll = (ch1 - ch2) / 1000
+            const float ch1 = input.servos[d->channel2-1];
+            const float ch2 = input.servos[d->channel-1];
             send_dref(d->name, d->range * (ch1 - ch2) / 1000.0f);
             break;
         }
 
         case DRefType::ELEVON_ELEVATOR: {
-            // ch1 = left elevon (servo1) PWM, ch2 = right elevon (servo2) PWM [1000, 2000]
-            // roll = (ch1 + ch2 - 3000) / 1000
-            const float ch1 = input.servos[d->channel-1];
-            const float ch2 = input.servos[d->channel2-1];
+            // ch1 = right elevon (channel2) PWM, ch2 = left elevon (channel) PWM [1000, 2000]
+            // pitch = (ch1 + ch2 - 3000) / 1000
+            const float ch1 = input.servos[d->channel2-1];
+            const float ch2 = input.servos[d->channel-1];
             send_dref(d->name, d->range * (ch1 + ch2 - 3000.0f) / 1000.0f+0.5);
             break;
         }
