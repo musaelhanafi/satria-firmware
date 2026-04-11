@@ -446,6 +446,15 @@ bool XPlane::receive_data(void)
         }
             
         case LatLonAlt: {
+            // sanity-check: reject NaN/Inf and out-of-range lat/lon that
+            // X-Plane can send during a simulation reset, which would later
+            // cause a SIGFPE in the navigation math
+            if (!isfinite(data[1]) || !isfinite(data[2]) || !isfinite(data[3]) ||
+                fabsf(data[1]) > 90.0f || fabsf(data[2]) > 180.0f) {
+                printf("X-Plane bad LatLonAlt lat=%.2f lon=%.2f alt=%.2f — skipping\n",
+                       data[1], data[2], data[3]);
+                goto failed;
+            }
             loc.lat = data[1] * 1e7;
             loc.lng = data[2] * 1e7;
             loc.alt = data[3] * FEET_TO_METERS * 100.0f;
@@ -566,8 +575,14 @@ bool XPlane::receive_data(void)
     
     // the position may slowly deviate due to float accuracy and longitude scaling
     if (loc.get_distance(location) > 4 || abs(loc.alt - location.alt)*0.01f > 2.0f) {
+        const float reset_dist = loc.get_distance(location);
+        // guard against X-Plane sending garbage position during sim reset
+        if (reset_dist > 1e6f) {
+            printf("X-Plane home reset rejected: dist=%.1f m — likely sim reset garbage\n", reset_dist);
+            goto failed;
+        }
         printf("X-Plane home reset dist=%f alt=%.1f/%.1f\n",
-               loc.get_distance(location), loc.alt*0.01f, location.alt*0.01f);
+               reset_dist, loc.alt*0.01f, location.alt*0.01f);
         // reset home location
         position_zero = {-pos.x, -pos.y, -pos.z};
         home.lat = loc.lat;
