@@ -40,11 +40,13 @@
 
 extern const AP_HAL::HAL& hal;
 
+#ifndef XPLANE_JSON
 #if APM_BUILD_TYPE(APM_BUILD_Heli)
 #define XPLANE_JSON "xplane_heli.json"
 #else
 #define XPLANE_JSON "xplane_plane.json"
 #endif
+#endif // XPLANE_JSON
 #define XPLANE_JSON_ELEVON "xplane_plane_elevon.json"
 
 // DATA@ frame types. Thanks to TauLabs xplanesimulator.h
