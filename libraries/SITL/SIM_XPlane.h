@@ -137,12 +137,10 @@ private:
     void add_joyinput(const char *name, JoyType type, const AP_JSON::value &d);
     void handle_setting(const AP_JSON::value &d);
     void handle_engine_state(void);
-    void bind_socket(void);
 
     void check_reload_dref(void);
 
     bool last_armed = false;
-    bool socket_bound = false;
     uint32_t arm_time_ms = 0;       // millis() when last armed
     bool engine_cranking = false;   // true while holding starter (ignition=4)
 

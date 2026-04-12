@@ -425,7 +425,19 @@ void AP_Networking_PPP::restart_instance(const uint8_t idx)
     }
 #else
     // normal PPP link, connect to the remote end and set as the
-    // default route
+    // default route.
+    // Pre-configure IPCP local address from NET_IPADDR so the firmware
+    // proposes the correct IP in its Configure-Request instead of 0.0.0.0.
+    // Without this, lwIP sends 0.0.0.0 and relies on pppd to send
+    // Configure-Nak — which macOS pppd may not do, leaving IP unset.
+    {
+        const uint32_t ip_param = frontend.get_ip_param();
+        if (ip_param != 0) {
+            ip4_addr_t our_ip;
+            our_ip.addr = htonl(ip_param);
+            ppp_set_ipcp_ouraddr(inst.ppp, &our_ip);
+        }
+    }
     ppp_connect(inst.ppp, 0);
     if (idx == 0) {
         netif_set_default(inst.pppif);

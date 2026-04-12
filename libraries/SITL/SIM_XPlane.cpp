@@ -125,8 +125,9 @@ XPlane::XPlane(const char *frame_str) :
         }
     }
 
-    // actual bind is deferred to first update() so SIM_XP_BIND_PORT param
-    // (loaded after construction) can override the port from the frame string
+    socket_in.bind("0.0.0.0", bind_port);
+    printf("Waiting for XPlane data on UDP port %u and sending to port %u\n",
+           (unsigned)bind_port, (unsigned)xplane_port);
 
     // XPlane sensor data is not good enough for EKF. Use fake EKF by default
     AP_Param::set_default_by_name("AHRS_EKF_TYPE", 10);
@@ -884,31 +885,10 @@ void XPlane::handle_engine_state(void)
 }
 
 /*
-  bind the input socket, called once on first update() so that the
-  SIM_XP_BIND_PORT parameter (loaded after construction) can override
-  the port parsed from the frame string.
-*/
-void XPlane::bind_socket(void)
-{
-    auto *sitl_params = AP::sitl();
-    if (sitl_params != nullptr && sitl_params->xplane_bind_port > 0) {
-        bind_port = (uint16_t)sitl_params->xplane_bind_port.get();
-    }
-    socket_in.bind("0.0.0.0", bind_port);
-    printf("Waiting for XPlane data on UDP port %u and sending to port %u\n",
-           (unsigned)bind_port, (unsigned)xplane_port);
-    socket_bound = true;
-}
-
-/*
   update the XPlane simulation by one time step
  */
 void XPlane::update(const struct sitl_input &input)
 {
-    if (!socket_bound) {
-        bind_socket();
-    }
-
     if (receive_data()) {
         // Limit DREF sends to 25 Hz to avoid saturating PPP link.
         // Each DREF packet is 509 bytes; at 50 Hz with 3 DREFs that is ~76 KB/s

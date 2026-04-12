@@ -101,6 +101,13 @@ NET_ENABLE 1
 SERIAL2_PROTOCOL 48
 SERIAL2_BAUD 115
 
+# PPP local IP — pre-configures IPCP so firmware proposes 10.0.0.2
+# in its Configure-Request rather than 0.0.0.0.
+NET_IPADDR0 10
+NET_IPADDR1 0
+NET_IPADDR2 0
+NET_IPADDR3 2
+
 # NET_OPTIONS bit 6 (64) = PPP_ECHO_LIMIT_DISABLE
 # Without this, lwIP sends LCP echo every 1 s and terminates after 5 failures
 # (~5 s) with "LCP terminated by peer (Peer not responding)".
