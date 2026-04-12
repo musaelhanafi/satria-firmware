@@ -4503,9 +4503,34 @@ void GCS_MAVLINK::handle_message(const mavlink_message_t &msg)
 
 #if AP_GPS_ENABLED
     case MAVLINK_MSG_ID_GPS_RTCM_DATA:
-    case MAVLINK_MSG_ID_GPS_INPUT:
     case MAVLINK_MSG_ID_GPS_INJECT_DATA:
         AP::gps().handle_msg(chan, msg);
+        break;
+    case MAVLINK_MSG_ID_GPS_INPUT:
+        AP::gps().handle_msg(chan, msg);
+#if AP_SIM_ENABLED
+        {
+            // Mirror GPS_INPUT fields into sitl->state so SITL sensor
+            // backends (GPS1_TYPE=100, compass) pick up position and heading
+            // from mavlink_xplane.py instead of only from the XPlane UDP backend.
+            // sitl->state.yawDeg drives AP_Compass_SITL → EKF2 heading.
+            SITL::SIM *sitl = AP::sitl();
+            if (sitl != nullptr) {
+                mavlink_gps_input_t gps_pkt;
+                mavlink_msg_gps_input_decode(&msg, &gps_pkt);
+                sitl->state.latitude  = gps_pkt.lat * 1.0e-7;
+                sitl->state.longitude = gps_pkt.lon * 1.0e-7;
+                sitl->state.altitude  = gps_pkt.alt;
+                sitl->state.speedN    = gps_pkt.vn;
+                sitl->state.speedE    = gps_pkt.ve;
+                sitl->state.speedD    = gps_pkt.vd;
+                if (gps_pkt.yaw != 0) {
+                    // yaw: centidegrees, 0=unknown, 36000=North
+                    sitl->state.yawDeg = gps_pkt.yaw * 0.01f;
+                }
+            }
+        }
+#endif
         break;
 #endif
 
@@ -4552,7 +4577,13 @@ void GCS_MAVLINK::handle_message(const mavlink_message_t &msg)
 
     case MAVLINK_MSG_ID_DATA96:
         handle_data_packet(msg);
-        break;        
+        break;
+
+#if AP_SIM_ENABLED
+    case MAVLINK_MSG_ID_HIL_SENSOR:
+        handle_hil_sensor(msg);
+        break;
+#endif
 
 #if HAL_VISUALODOM_ENABLED
     case MAVLINK_MSG_ID_VISION_POSITION_DELTA:
@@ -4836,6 +4867,50 @@ void GCS_MAVLINK::send_banner()
 
 
 #if AP_SIM_ENABLED
+/*
+  handle HIL_SENSOR: inject gyro/accel/baro/mag into sitl->state so
+  AP_InertialSensor_SITL, AP_Baro_SITL and AP_Compass_SITL pick it up.
+  Used by mavlink_xplane.py as an alternative to the PPP/XPlane UDP backend.
+*/
+void GCS_MAVLINK::handle_hil_sensor(const mavlink_message_t &msg)
+{
+    SITL::SIM *sitl = AP::sitl();
+    if (sitl == nullptr) {
+        return;
+    }
+
+    mavlink_hil_sensor_t pkt;
+    mavlink_msg_hil_sensor_decode(&msg, &pkt);
+
+    // accel (m/s²)
+    sitl->state.xAccel = pkt.xacc;
+    sitl->state.yAccel = pkt.yacc;
+    sitl->state.zAccel = pkt.zacc;
+
+    // gyro (rad/s) — sitl_fdm stores deg/s
+    sitl->state.rollRate  = degrees(pkt.xgyro);
+    sitl->state.pitchRate = degrees(pkt.ygyro);
+    sitl->state.yawRate   = degrees(pkt.zgyro);
+
+    // baro: use pressure_alt directly as MSL altitude
+    if (pkt.fields_updated & 0xE00) {   // abs_pressure | diff_pressure | pressure_alt
+        sitl->state.altitude = pkt.pressure_alt;
+        sitl->state.airspeed = sqrtf(MAX(2.0f * pkt.diff_pressure * 100.0f / 1.225f, 0.0f));
+        sitl->state.velocity_air_bf.x = sitl->state.airspeed;
+        sitl->state.velocity_air_bf.y = 0.0f;
+        sitl->state.velocity_air_bf.z = 0.0f;
+    }
+
+    // magnetometer (Gauss → mGauss for AP_Compass_SITL)
+    if (pkt.fields_updated & 0x1C0) {   // xmag | ymag | zmag
+        sitl->state.bodyMagField.x = pkt.xmag * 1000.0f;
+        sitl->state.bodyMagField.y = pkt.ymag * 1000.0f;
+        sitl->state.bodyMagField.z = pkt.zmag * 1000.0f;
+    }
+
+    sitl->state.timestamp_us = pkt.time_usec;
+}
+
 void GCS_MAVLINK::send_simstate() const
 {
     SITL::SIM *sitl = AP::sitl();
