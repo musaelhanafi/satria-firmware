@@ -333,9 +333,16 @@ void XPlane::select_data(void)
         // got it all
         return;
     }
+    // Throttle to 1 Hz — avoid flooding X-Plane with repeated DSEL packets
+    const uint32_t now_ms = AP_HAL::millis();
+    if (now_ms - last_dsel_ms < 1000) {
+        return;
+    }
+    last_dsel_ms = now_ms;
+
     struct PACKED {
         uint8_t  marker[5] { 'D', 'S', 'E', 'L', '0' };
-        uint32_t data[8] {};
+        uint32_t data[ARRAY_SIZE(required_data)] {};
     } dsel;
     uint8_t count = 0;
     for (uint8_t i=0; i<ARRAY_SIZE(required_data); i++) {
@@ -347,7 +354,7 @@ void XPlane::select_data(void)
     }
     if (count != 0) {
         socket_out.send(&dsel, sizeof(dsel));
-        printf("Selecting %u data types\n", (unsigned)count);
+        printf("Selecting %u data types (waiting for X-Plane DATA stream)\n", (unsigned)count);
     }
 }
 
@@ -368,7 +375,7 @@ void XPlane::deselect_code(uint8_t code)
 */
 bool XPlane::receive_data(void)
 {
-    uint8_t pkt[10000];
+    uint8_t *pkt = _recv_buf;
     uint8_t *p = &pkt[5];
     const uint8_t pkt_len = 36;
     Location loc {};
@@ -382,7 +389,7 @@ bool XPlane::receive_data(void)
         now+1 >= last_data_time_ms + xplane_frame_time) {
         wait_time_ms = 10;
     }
-    ssize_t len = socket_in.recv(pkt, sizeof(pkt), wait_time_ms);
+    ssize_t len = socket_in.recv(pkt, sizeof(_recv_buf), wait_time_ms);
     
     if (len < 5) {
         // bad packet
@@ -417,8 +424,13 @@ bool XPlane::receive_data(void)
     }
     
     while (len >= pkt_len) {
-        const float *data = (const float *)p;
-        uint8_t code = p[0];
+        // p is at offset 5 from the buffer (after "DATA\0" header).
+        // On Cortex-M4, VLDR requires 4-byte alignment; casting uint8_t* to float*
+        // at an unaligned address causes a HardFault.  Use memcpy to copy the
+        // 36-byte row into an aligned local array before accessing as floats.
+        float data[9];
+        memcpy(data, p, 36);
+        uint8_t code = p[0];  // byte access — always safe
         int8_t idx = find_data_index(code);
         if (idx == -1) {
             deselect_code(code);
@@ -637,67 +649,122 @@ failed:
 void XPlane::handle_rref(const uint8_t *pkt, uint32_t len)
 {
     const uint8_t *p = &pkt[5];
-    const struct PACKED RRefPacket {
-        uint32_t code;
-        union PACKED {
-            float value_f;
-            double value_d;
-        };
-    } *ref = (const struct RRefPacket *)p;
-    switch (ref->code) {
+    // Use memcpy to avoid unaligned float/uint32 access on Cortex-M4 (HardFault).
+    uint32_t ref_code;
+    float    ref_value_f;
+    memcpy(&ref_code,    p,     4);
+    memcpy(&ref_value_f, p + 4, 4);
+    switch (ref_code) {
     case RREF_VERSION:
         if (xplane_version == 0) {
-            ::printf("XPlane version %.0f\n", ref->value_f);
+            ::printf("XPlane version %.0f\n", ref_value_f);
         }
-        xplane_version = uint32_t(ref->value_f);
+        xplane_version = uint32_t(ref_value_f);
         break;
     }
 }
 
 
 /*
-  send DRef data to X-Plane via UDP
+  send DRef data to X-Plane via UDP.
+
+  Each DREF packet is 509 bytes (X-Plane protocol, cannot be shortened).
+  On a PPP link at 115200 baud (~10 KB/s effective), sending all DREFs
+  every cycle would overflow the link.  Instead we send at most ONE DREF
+  per call, round-robin through the list.  At 25 Hz that is ~12.7 KB/s
+  outbound — tight but feasible at 115200, comfortable at 921600.
+
+  FIXED DREFs (override flags) are re-sent once per second so that a
+  single dropped UDP packet cannot permanently disable them.
 */
+#define DREF_DEADBAND 0.005f
+#define DREF_FIXED_RESEND_CYCLES 25   // resend FIXED DREFs every N calls (~1 s at 25 Hz)
+
 void XPlane::send_drefs(const struct sitl_input &input)
 {
-    for (const auto *d = drefs; d; d=d->next) {
+    // On arm transition, reset deadband so all DREFs are re-sent immediately.
+    const bool armed = hal.util->get_soft_armed();
+    if (armed != last_armed) {
+        for (auto *d = drefs; d; d=d->next) {
+            d->last_sent = NAN;
+        }
+        last_armed = armed;
+    }
+
+    const bool resend_fixed = (++dref_fixed_count >= DREF_FIXED_RESEND_CYCLES);
+    if (resend_fixed) {
+        dref_fixed_count = 0;
+        // Priority pass: send each FIXED DREF immediately so override flags
+        // are never starved by roll/pitch winning the round-robin every cycle.
+        for (auto *d = drefs; d; d = d->next) {
+            if (d->type == DRefType::FIXED) {
+                d->last_sent = NAN;   // force resend
+                send_dref(d->name, d->fixed_value);
+            }
+        }
+        return;
+    }
+
+    // Round-robin: start from where we left off last call and scan
+    // the full list once, sending the FIRST DREF that needs an update.
+    if (dref_cursor == nullptr) {
+        dref_cursor = drefs;
+    }
+    auto *start = dref_cursor;
+    bool wrapped = false;
+
+    while (!wrapped || dref_cursor != start) {
+        auto *d = dref_cursor;
+        if (d == nullptr) {
+            dref_cursor = drefs;
+            wrapped = true;
+            continue;
+        }
+        dref_cursor = d->next;
+
+        float v;
         switch (d->type) {
-
-        case DRefType::ANGLE: {
-            float v  = d->range * (input.servos[d->channel-1]-1500)/500.0;
-            send_dref(d->name, v);
+        case DRefType::ANGLE:
+            v = d->range * (input.servos[d->channel-1]-1500)/500.0;
+            v = constrain_float(v, -d->range, d->range);
             break;
-        }
-
-        case DRefType::RANGE: {
-            float v  = d->range * (input.servos[d->channel-1]-1000)/1000.0;
-            send_dref(d->name, v);
+        case DRefType::RANGE:
+            if (!hal.util->get_soft_armed()) {
+                v = 0.0f;
+            } else {
+                v = d->range * (input.servos[d->channel-1]-1000)/1000.0;
+                v = constrain_float(v, 0.0f, d->range);
+            }
             break;
-        }
-
-        case DRefType::FIXED: {
-            send_dref(d->name, d->fixed_value);
-            break;
-        }
-
+        case DRefType::FIXED:
+            continue;   // handled by priority pass above; skip in round-robin
         case DRefType::ELEVON_AILERON: {
-            // ch1 = right elevon (channel2) PWM, ch2 = left elevon (channel) PWM [1000, 2000]
-            // roll = (ch1 - ch2) / 1000
-            const float ch1 = input.servos[d->channel2-1];
-            const float ch2 = input.servos[d->channel-1];
-            send_dref(d->name, d->range * (ch1 - ch2) / 1000.0f);
+            // roll = (ch1 - ch2) / 1000  (both servos centred at 1500)
+            const float ch1 = input.servos[d->channel-1];
+            const float ch2 = input.servos[d->channel2-1];
+            v = d->range * (ch1 - ch2) / 1000.0f;
+            v = constrain_float(v, -d->range, d->range);
             break;
+        }
+        case DRefType::ELEVON_ELEVATOR: {
+            // pitch = (ch1 + ch2 - 3000) / 1000
+            const float ch1 = input.servos[d->channel-1];
+            const float ch2 = input.servos[d->channel2-1];
+            v = d->range * (ch1 + ch2 - 3000.0f) / 1000.0f - 0.5f;
+            v = constrain_float(v, -d->range, d->range);
+            break;
+        }
+        default:
+            continue;
         }
 
-        case DRefType::ELEVON_ELEVATOR: {
-            // ch1 = right elevon (channel2) PWM, ch2 = left elevon (channel) PWM [1000, 2000]
-            // pitch = (ch1 + ch2 - 3000) / 1000
-            const float ch1 = input.servos[d->channel2-1];
-            const float ch2 = input.servos[d->channel-1];
-            send_dref(d->name, d->range * (ch1 + ch2 - 3000.0f) / 1000.0f+0.5);
-            break;
+        // Deadband check — skip if value unchanged
+        if (!isnan(d->last_sent) && fabsf(v - d->last_sent) < DREF_DEADBAND) {
+            continue;
         }
-        }
+        d->last_sent = v;
+        send_dref(d->name, v);
+        return;   // one packet per call — done
     }
 }
 
@@ -707,13 +774,15 @@ void XPlane::send_drefs(const struct sitl_input &input)
 */
 void XPlane::send_dref(const char *name, float value)
 {
-    struct PACKED {
-        uint8_t  marker[5] { 'D', 'R', 'E', 'F', '0' };
+    static struct PACKED {
+        uint8_t  marker[5];
         float value;
         char name[500];
-    } d {};
+    } d;
+    memcpy(d.marker, "DREF\0", 5);
     d.value = value;
-    strcpy(d.name, name);
+    memset(d.name, 0, sizeof(d.name));
+    strncpy(d.name, name, sizeof(d.name) - 1);
     socket_out.send(&d, sizeof(d));
     if (dref_debug > 0) {
         ::printf("-> %s : %.3f\n", name, value);
@@ -725,15 +794,17 @@ void XPlane::send_dref(const char *name, float value)
 */
 void XPlane::request_dref(const char *name, uint8_t code, uint32_t rate)
 {
-    struct PACKED {
-        uint8_t  marker[5] { 'R', 'R', 'E', 'F', '0' };
+    static struct PACKED {
+        uint8_t  marker[5];
         uint32_t rate_hz;
         uint32_t code;
         char name[400];
-    } d {};
+    } d;
+    memcpy(d.marker, "RREF\0", 5);
     d.rate_hz = rate;
     d.code = code; // given back in responses
-    strcpy(d.name, name);
+    memset(d.name, 0, sizeof(d.name));
+    strncpy(d.name, name, sizeof(d.name) - 1);
     socket_in.sendto(&d, sizeof(d), xplane_ip, xplane_port);
 }
 
@@ -819,9 +890,9 @@ void XPlane::handle_engine_state(void)
 */
 void XPlane::bind_socket(void)
 {
-    auto *sitl = AP::sitl();
-    if (sitl != nullptr && sitl->xplane_bind_port > 0) {
-        bind_port = (uint16_t)sitl->xplane_bind_port.get();
+    auto *sitl_params = AP::sitl();
+    if (sitl_params != nullptr && sitl_params->xplane_bind_port > 0) {
+        bind_port = (uint16_t)sitl_params->xplane_bind_port.get();
     }
     socket_in.bind("0.0.0.0", bind_port);
     printf("Waiting for XPlane data on UDP port %u and sending to port %u\n",
@@ -839,7 +910,17 @@ void XPlane::update(const struct sitl_input &input)
     }
 
     if (receive_data()) {
-        send_drefs(input);
+        // Limit DREF sends to 25 Hz to avoid saturating PPP link.
+        // Each DREF packet is 509 bytes; at 50 Hz with 3 DREFs that is ~76 KB/s
+        // which overflows a 115200-baud PPP buffer (ENOBUFS).
+        uint32_t now_ms = AP_HAL::millis();
+        if (now_ms - last_dref_ms >= 40) {
+            last_dref_ms = now_ms;
+            send_drefs(input);
+        }
+    } else if (connected) {
+        // Connected but no DATA yet — keep requesting data selection
+        select_data();
     }
 
     handle_engine_state();

@@ -22,7 +22,7 @@
 
 #if AP_SIM_XPLANE_ENABLED
 
-#include <AP_HAL/utility/Socket_native.h>
+#include <AP_HAL/utility/Socket.h>
 #include <AP_Filesystem/AP_Filesystem.h>
 
 #include "SIM_Aircraft.h"
@@ -68,8 +68,8 @@ private:
     char xplane_ip_buf[32] {};
     bool elevons = false;
     // udp socket, input and output
-    SocketAPM_native socket_in{true};
-    SocketAPM_native socket_out{true};
+    SocketAPM socket_in{true};
+    SocketAPM socket_out{true};
 
     uint64_t time_base_us;
     uint32_t last_data_time_ms;
@@ -78,6 +78,9 @@ private:
     bool connected = false;
     uint32_t xplane_frame_time;
     uint64_t seen_mask;
+    uint8_t _recv_buf[1500];
+    uint32_t last_dref_ms;
+    uint32_t last_dsel_ms;
 
     struct {
         uint32_t last_report_ms;
@@ -101,10 +104,13 @@ private:
         uint8_t channel2;  // secondary channel (elevon_left for elevon types)
         float range;
         float fixed_value;
+        float last_sent = NAN;   // last value sent — skip if change < deadband
     };
 
     // list of DRefs;
     struct DRef *drefs;
+    struct DRef *dref_cursor = nullptr;  // round-robin pointer for bandwidth-limited send
+    uint32_t dref_fixed_count = 0;       // counter for periodic FIXED DREF resend
     uint32_t dref_debug;
 
     enum class JoyType {

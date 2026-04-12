@@ -14,7 +14,7 @@
 #   ./waf plane
 #
 # X-Plane setup:
-#   Settings → Net Connections → Data: send DATA@ to 10.0.0.2:49001
+#   Settings → Net Connections → Data: send DATA@ to 10.0.0.2:49005
 #   Rows: 3 (speed), 4 (Gload), 16 (ang vel), 17 (pitch/roll/hdg),
 #         20 (lat/lon/alt), 21 (local vel)
 #

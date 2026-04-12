@@ -2,6 +2,7 @@
 
 #include <AP_HAL/AP_HAL_Boards.h>
 #include <GCS_MAVLink/GCS_config.h>
+#include <AP_Networking/AP_Networking_Config.h>
 
 #define AP_SIM_MAX_GPS_SENSORS 4
 
@@ -379,7 +380,8 @@
 #endif  // AP_SIM_WEBOTSPYTHON_ENABLED
 
 #ifndef AP_SIM_XPLANE_ENABLED
-#define AP_SIM_XPLANE_ENABLED (CONFIG_HAL_BOARD == HAL_BOARD_SITL)
+#define AP_SIM_XPLANE_ENABLED ((CONFIG_HAL_BOARD == HAL_BOARD_SITL) || \
+    (AP_SIM_ENABLED && AP_NETWORKING_BACKEND_PPP))
 #endif  // AP_SIM_XPLANE_ENABLED
 
 // base class for Siyi simulations:

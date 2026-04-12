@@ -37,7 +37,8 @@ void GPS_UBlox::send_ubx(uint8_t msgid, uint8_t *buf, uint16_t size)
 
 void GPS_UBlox::update_relposned(ubx_nav_relposned &relposned, uint32_t tow_ms, float yaw_deg)
 {
-    Vector3f ant1_pos { NaNf, NaNf, NaNf };
+    Vector3f ant1_pos;
+    ant1_pos.x = ant1_pos.y = ant1_pos.z = NaNf;
 
     // find our partner:
     for (uint8_t i=0; i<ARRAY_SIZE(_sitl->gps); i++) {
