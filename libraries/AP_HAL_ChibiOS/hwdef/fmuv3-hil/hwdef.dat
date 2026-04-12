@@ -2,9 +2,9 @@
 # fmuv3 (Pixhawk1) SITL-on-hardware with X-Plane as the physics backend.
 #
 # Architecture:
-#   - AP_SIM_FRAME_CLASS=XPlane: SITL connects directly to X-Plane via UDP.
-#   - PPP over TELEM2 serial gives the Pixhawk an IP address to reach X-Plane.
-#     PC: sudo pppd /dev/ttyUSBx 115200 10.0.0.1:10.0.0.2 noauth local
+#   - AP_SIM_FRAME_CLASS=XPlane: SITL XPlane backend runs on the MCU.
+#   - PPP over TELEM2 (SERIAL2) gives the Pixhawk an IP to reach X-Plane.
+#     PC: sudo pppd /dev/tty.usbserial-XXXX 115200 10.0.0.1:10.0.0.2 noauth local nodetach asyncmap 0 novj nopcomp noaccomp lcp-echo-interval 0
 #   - SITL sends elevon/throttle DREFs to X-Plane, receives DATA@ physics back.
 #   - SIMState (GPS/IMU/Baro/Compass backends) reads from X-Plane data.
 #   - Safety switch disabled; servos output immediately on boot.
@@ -15,36 +15,34 @@
 #
 # X-Plane setup:
 #   Settings → Net Connections → Data: send DATA@ to 10.0.0.2:49005
-#   Rows: 3 (speed), 4 (Gload), 16 (ang vel), 17 (pitch/roll/hdg),
-#         20 (lat/lon/alt), 21 (local vel)
+#   Rows: 1 (times), 3 (speed), 4 (Gload), 13 (trim), 16 (ang vel),
+#         17 (pitch/roll/hdg), 20 (lat/lon/alt), 21 (local vel),
+#         37 (engine RPM), 38 (prop RPM), 39 (prop pitch)
 #
 # Default parameters (embedded via defaults.parm):
-#   GPS1_TYPE       1     SITL GPS (reads SIMState populated by X-Plane)
-#   COMPASS_USE     1     SITL compass (reads SIMState)
-#   ARSPD_TYPE      100   SITL airspeed
-#   NET_ENABLE      1     PPP networking enabled
-#   SERIAL2_PROTOCOL 48   PPP on TELEM2
+#   GPS1_TYPE        100   SITL GPS (reads SIMState populated by X-Plane)
+#   COMPASS_USE      1     SITL compass (reads SIMState)
+#   ARSPD_TYPE       100   SITL airspeed
+#   NET_ENABLE       1     PPP networking enabled
+#   SERIAL2_PROTOCOL 48    PPP on TELEM2
+#   NET_IPADDR0-3         10.0.0.2
 
 include ../fmuv3/hwdef.dat
 
 # ── SITL framework ────────────────────────────────────────────────────────────
-# Enable AP_SIM_ENABLED=1 — activates:
-#   AP_InertialSensor_SITL  reads gyro/accel from sitl->state
-#   AP_Baro_SITL            reads altitude/pressure from sitl->state
-#   SIMState::update()      runs Plane aerodynamics each scheduler tick
+# SIM_ENABLED activates SITL sensor backends (INS, Baro, Compass) so they
+# read from sitl->state, which SIM_XPlane populates from X-Plane DATA@.
 env SIM_ENABLED 1
 
-# Run ArduPlane's built-in SITL aerodynamic model on the MCU.
-# SCHED_LOOP_RATE=50 (set in defaults.parm) keeps the scheduler slow enough
-# to avoid watchdog resets on the STM32F427.
+# X-Plane frame: SITL XPlane backend runs on MCU, connects to X-Plane via UDP
+# over the PPP link (10.0.0.1 = PC pppd address).
 define AP_SIM_FRAME_CLASS XPlane
-# IP after colon = X-Plane host reachable over PPP link (10.0.0.1 = PC pppd address)
 define AP_SIM_FRAME_STRING "xplane:10.0.0.1"
 
 # JSON DREF map embedded in ROMFS for flying-wing elevon airframe
 define XPLANE_JSON "@ROMFS/xplane_elevon.json"
 
-# Disable the file-replay INS backend (not needed for live simulation)
+# Disable file-replay INS backend (not needed for live simulation)
 define AP_SIM_INS_FILE_ENABLED 0
 
 # ── hardware overrides ────────────────────────────────────────────────────────
@@ -81,17 +79,21 @@ define HAL_HOTT_TELEM_ENABLED 0
 define HAL_SUPPORT_RCOUT_SERIAL 0
 define AP_LANDINGGEAR_ENABLED 0
 
-# ── Networking: PPP over serial ───────────────────────────────────────────────
-# PPP creates a TCP/IP link over one UART so the SITL XPlane backend can
+# ── Networking: PPP over TELEM2 ───────────────────────────────────────────────
+# PPP creates a TCP/IP link over SERIAL2 so the SITL XPlane backend can
 # send/receive UDP packets to/from X-Plane running on the connected PC.
-# Runtime params (set via QGC or defaults.parm):
-#   SERIAL2_PROTOCOL 48   NET_ENABLE 1   NET_P1_TYPE 1
-#   NET_P1_IPADDR 10.0.0.2  NET_P1_GATEWAY 10.0.0.1
+# AP_Networking_Config.h includes AP_NETWORKING_BACKEND_PPP in
+# AP_NETWORKING_CONTROLS_HOST_IP_SETTINGS_ENABLED so NET_IPADDR0-3 params
+# exist; restart_instance() calls ppp_set_ipcp_ouraddr(10.0.0.2) before
+# ppp_connect() so ArduPilot proposes its IP in IPCP Configure-Request.
+HAL_USE_PPP TRUE
 define AP_NETWORKING_BACKEND_PPP 1
 define TCPIP_THREAD_STACKSIZE 4096
 define AP_NETWORKING_PORT_STACK_SIZE 2048
-define PPP_BUFSIZE_RX 8192
-define PPP_BUFSIZE_TX 16384
+# Buffer sizes tuned for 115200 baud (≈11.5 KB/s).
+# 2048/1024 avoids STM32F427 heap exhaustion and the "No buffer space" error.
+define PPP_BUFSIZE_TX 2048
+define PPP_BUFSIZE_RX 1024
 
 # ROMFS: embed the X-Plane DREF map so no SD card is needed
 ROMFS xplane_elevon.json Tools/autotest/models/xplane_elevon.json

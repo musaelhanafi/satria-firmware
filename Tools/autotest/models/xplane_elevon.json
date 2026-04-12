@@ -3,7 +3,6 @@
 # SIM_XPlane demixes servos:
 #   yoke_roll_ratio  = (ch1 - ch2) / 1000           via elevon_aileron
 #   yoke_pitch_ratio = (ch1 + ch2 - 3000) / 1000    via elevon_elevator
-# Roll sign: left-up/right-down (ch1>ch2) → positive roll ratio (roll right) ✓
 
 {
     "settings" : { "debug" : 0 },
@@ -12,8 +11,9 @@
     "sim/operation/override/override_throttles" : { "type" : "fixed", "value" : 1 },
 
     # elevon demix: channel=SERVO1 (left elevon), channel2=SERVO2 (right elevon)
-    "sim/joystick/yoke_roll_ratio"  : { "type" : "elevon_aileron",  "range" : 1, "channel" : 1, "channel2" : 2 },
-    "sim/joystick/yoke_pitch_ratio" : { "type" : "elevon_elevator", "range" : 1, "channel" : 1, "channel2" : 2 },
+    # MIXING_GAIN is read at runtime from the ArduPlane MIXING_GAIN param.
+    "sim/joystick/yoke_roll_ratio"  : { "type" : "elevon_aileron",  "range" : 1.0, "channel" : 1, "channel2" : 2 },
+    "sim/joystick/yoke_pitch_ratio" : { "type" : "elevon_elevator", "range" : 1.0, "channel" : 1, "channel2" : 2 },
 
     # forward throttle on SERVO3
     "sim/flightmodel/engine/ENGN_thro_use[0]" : { "type" : "range", "range" : 1, "channel" : 3 }

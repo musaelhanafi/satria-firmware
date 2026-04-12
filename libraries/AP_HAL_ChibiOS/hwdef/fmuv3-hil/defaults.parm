@@ -14,8 +14,6 @@ COMPASS_USE 1
 
 # GPS: SITL GPS backend (type 100) — reads position/velocity from SIMState
 # which the XPlane backend populates from X-Plane DATA@ row 20/21.
-# GPS1_TYPE=1 (AUTO) tries to detect a real GPS on the serial port and will
-# never find one on fmuv3-hil, leaving GPS undetected.
 GPS1_TYPE 100
 
 # Airspeed: SITL backend (reads airspeed from SIMState / X-Plane)
@@ -70,6 +68,11 @@ TKOFF_TDRAG_SPD1 0
 # so the prop stays idle regardless of RC stick position until armed.
 SIM_OH_MASK 255
 
+# ── X-Plane UDP bind port ────────────────────────────────────────────────────
+# X-Plane → Settings → Net Connections → Data: send DATA@ to 10.0.0.2:49005
+# SIM_XP_BIND_PORT overrides the default (49001) so the port matches X-Plane.
+SIM_XP_BIND_PORT 49005
+
 # ── SITL home position — Bandung WICC ────────────────────────────────────────
 # Without a valid home the SITL GPS reports 0°N 0°E; EKF2 will not converge
 # and QGC shows no GPS position.  These values must match X-Plane's location.
@@ -88,12 +91,6 @@ TRK_TGT_ALT  744.0
 # PPP runs on TELEM2 (SERIAL2) for X-Plane UDP data.
 # PC command (macOS): sudo pppd /dev/tty.usbserial-XXXX 115200 10.0.0.1:10.0.0.2 noauth local nodetach asyncmap 0 novj nopcomp noaccomp lcp-echo-interval 0
 # PC command (Linux): sudo pppd /dev/ttyUSB0 115200 10.0.0.1:10.0.0.2 noauth local nodetach asyncmap 0 novj nopcomp noaccomp lcp-echo-interval 0
-# asyncmap 0         — disables control-char escaping (~20% bandwidth saving)
-# novj               — disables VJ TCP header compression (reduces latency)
-# nopcomp/noaccomp   — disables PPP header compression (simpler framing)
-# lcp-echo-interval 0 — disables LCP keepalive; ArduPilot PPP does not reply
-#                        to LCP Echo-Requests so pppd would drop with
-#                        "Peer not responding" after ~12 s without this flag
 SERIAL0_PROTOCOL 2
 SERIAL0_BAUD 921
 
@@ -101,17 +98,14 @@ NET_ENABLE 1
 SERIAL2_PROTOCOL 48
 SERIAL2_BAUD 115
 
-# PPP local IP — pre-configures IPCP so firmware proposes 10.0.0.2
-# in its Configure-Request rather than 0.0.0.0.
+# PPP local IP — AP_Networking_Config.h includes AP_NETWORKING_BACKEND_PPP in
+# AP_NETWORKING_CONTROLS_HOST_IP_SETTINGS_ENABLED so these params exist.
+# restart_instance() calls ppp_set_ipcp_ouraddr(10.0.0.2) before ppp_connect().
 NET_IPADDR0 10
 NET_IPADDR1 0
 NET_IPADDR2 0
 NET_IPADDR3 2
 
 # NET_OPTIONS bit 6 (64) = PPP_ECHO_LIMIT_DISABLE
-# Without this, lwIP sends LCP echo every 1 s and terminates after 5 failures
-# (~5 s) with "LCP terminated by peer (Peer not responding)".
+# Without this, lwIP sends LCP echo every 1 s and terminates after 5 failures.
 NET_OPTIONS 64
-
-# NET_P1: not needed — X-Plane uses the XPlane SITL backend directly via UDP.
-# QGC connects via USB (SERIAL0 MAVLink2), no network endpoint required.

@@ -125,6 +125,15 @@ XPlane::XPlane(const char *frame_str) :
         }
     }
 
+    // SIM_XP_BIND_PORT param overrides the port from the frame string (or
+    // the compiled-in default of 49001) when non-zero.
+    {
+        auto *_sitl = AP::sitl();
+        if (_sitl != nullptr && _sitl->xplane_bind_port > 0) {
+            bind_port = uint16_t(_sitl->xplane_bind_port.get());
+        }
+    }
+
     socket_in.bind("0.0.0.0", bind_port);
     printf("Waiting for XPlane data on UDP port %u and sending to port %u\n",
            (unsigned)bind_port, (unsigned)xplane_port);
@@ -168,6 +177,8 @@ void XPlane::add_dref(const char *name, DRefType type, const AP_JSON::value &dre
         d->channel = dref.get("channel").get<double>();
         if (d->type == DRefType::ELEVON_AILERON || d->type == DRefType::ELEVON_ELEVATOR) {
             d->channel2 = dref.get("channel2").get<double>();
+            // optional "gain": inverse of ArduPlane MIXING_GAIN baked into the
+            // elevon PWM.  Default 1.0 (no correction).
         }
     }
     // add to linked list
@@ -740,7 +751,7 @@ void XPlane::send_drefs(const struct sitl_input &input)
         case DRefType::FIXED:
             continue;   // handled by priority pass above; skip in round-robin
         case DRefType::ELEVON_AILERON: {
-            // roll = (ch1 - ch2) / 1000  (both servos centred at 1500)
+            // roll = (ch1 - ch2) / 1000
             const float ch1 = input.servos[d->channel-1];
             const float ch2 = input.servos[d->channel2-1];
             v = d->range * (ch1 - ch2) / 1000.0f;
@@ -751,7 +762,7 @@ void XPlane::send_drefs(const struct sitl_input &input)
             // pitch = (ch1 + ch2 - 3000) / 1000
             const float ch1 = input.servos[d->channel-1];
             const float ch2 = input.servos[d->channel2-1];
-            v = d->range * (ch1 + ch2 - 3000.0f) / 1000.0f - 0.5f;
+            v = -d->range * (ch1 + ch2 - 3000.0f) / 1000.0f;
             v = constrain_float(v, -d->range, d->range);
             break;
         }
@@ -775,6 +786,11 @@ void XPlane::send_drefs(const struct sitl_input &input)
 */
 void XPlane::send_dref(const char *name, float value)
 {
+    if (!connected) {
+        // socket_out.connect() has not been called yet — X-Plane hasn't sent
+        // its first DATA@ packet so we don't know its address.  Drop silently.
+        return;
+    }
     static struct PACKED {
         uint8_t  marker[5];
         float value;
@@ -814,75 +830,6 @@ void XPlane::request_drefs(void)
     request_dref("sim/version/xplane_internal_version", RREF_VERSION, 1);
 }
 
-/*
-  send engine start or stop commands to X-Plane when arm state changes.
-  Arm   → mixture full rich + ignition start → engine running.
-  Disarm → ignition off + mixture cutoff    → engine stopped.
-  Up to 4 engines are handled to match the throttle DREFs in the JSON map.
-*/
-void XPlane::handle_engine_state(void)
-{
-    if (!connected) {
-        return;
-    }
-
-    const bool armed = hal.util->get_soft_armed();
-    const uint32_t now = AP_HAL::millis();
-
-    // on arm/disarm transition
-    if (armed != last_armed) {
-        last_armed = armed;
-
-        if (armed) {
-            ::printf("XPlane: arming - starting engines\n");
-            arm_time_ms = now;
-            engine_cranking = true;
-
-            // battery on + mixture full rich
-            for (uint8_t i = 0; i < 4; i++) {
-                char dref[64];
-                snprintf(dref, sizeof(dref),
-                         "sim/cockpit2/electrical/battery_on[%u]", i);
-                send_dref(dref, 1.0f);
-                snprintf(dref, sizeof(dref),
-                         "sim/cockpit2/engine/actuators/mixture_ratio[%u]", i);
-                send_dref(dref, 1.0f);
-            }
-        } else {
-            ::printf("XPlane: disarming - stopping engines\n");
-            engine_cranking = false;
-
-            for (uint8_t i = 0; i < 4; i++) {
-                char dref[64];
-                snprintf(dref, sizeof(dref),
-                         "sim/cockpit2/engine/actuators/ignition_key[%u]", i);
-                send_dref(dref, 0.0f);  // 0 = off
-                snprintf(dref, sizeof(dref),
-                         "sim/cockpit2/engine/actuators/mixture_ratio[%u]", i);
-                send_dref(dref, 0.0f);  // cutoff
-                snprintf(dref, sizeof(dref),
-                         "sim/cockpit2/electrical/battery_on[%u]", i);
-                send_dref(dref, 0.0f);
-            }
-        }
-    }
-
-    // while armed: hold ignition=4 (start/crank) for 2 s, then switch to 3 (both magnetos on)
-    if (armed) {
-        const uint32_t elapsed = now - arm_time_ms;
-        const float ignition = (elapsed < 2000) ? 4.0f : 3.0f;  // 4=start, 3=both magnetos
-        if (engine_cranking && elapsed >= 2000) {
-            engine_cranking = false;
-            ::printf("XPlane: engine started - magnetos on\n");
-        }
-        for (uint8_t i = 0; i < 4; i++) {
-            char dref[64];
-            snprintf(dref, sizeof(dref),
-                     "sim/cockpit2/engine/actuators/ignition_key[%u]", i);
-            send_dref(dref, ignition);
-        }
-    }
-}
 
 /*
   update the XPlane simulation by one time step
@@ -902,8 +849,6 @@ void XPlane::update(const struct sitl_input &input)
         // Connected but no DATA yet — keep requesting data selection
         select_data();
     }
-
-    handle_engine_state();
 
     uint32_t now = AP_HAL::millis();
     if (report.last_report_ms == 0) {

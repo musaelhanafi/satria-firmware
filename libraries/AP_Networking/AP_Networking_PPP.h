@@ -38,6 +38,9 @@ private:
         struct ppp_pcb_s *ppp;
         bool need_restart;
         uint32_t last_read_ms;
+        uint32_t total_rx_bytes;
+        uint32_t total_tx_bytes;
+        int last_err_code;
 #if AP_NETWORKING_CAPTURE_ENABLED
         struct {
             HAL_Semaphore sem;

@@ -70,6 +70,7 @@ uint32_t AP_Networking_PPP::ppp_output_cb(ppp_pcb *pcb, const void *data, uint32
          */
         return 0;
     }
+    driver.total_tx_bytes += len;
 
 
 #if AP_NETWORKING_CAPTURE_ENABLED
@@ -164,6 +165,7 @@ void AP_Networking_PPP::ppp_status_callback(ppp_pcb *pcb, int code, void *ctx)
     case PPPERR_PEERDEAD:
     case PPPERR_IDLETIMEOUT:
     case PPPERR_CONNECTTIME:
+        driver.last_err_code = code;
         driver.need_restart = true;
         break;
 
@@ -432,12 +434,23 @@ void AP_Networking_PPP::restart_instance(const uint8_t idx)
     // Configure-Nak — which macOS pppd may not do, leaving IP unset.
     {
         const uint32_t ip_param = frontend.get_ip_param();
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "PPP[%u]: restart ip_param=0x%08x",
+                      unsigned(idx), unsigned(ip_param));
         if (ip_param != 0) {
             ip4_addr_t our_ip;
             our_ip.addr = htonl(ip_param);
+            GCS_SEND_TEXT(MAV_SEVERITY_INFO, "PPP[%u]: IPCP ouraddr=%u.%u.%u.%u",
+                          unsigned(idx),
+                          unsigned((ip_param >> 24) & 0xFF),
+                          unsigned((ip_param >> 16) & 0xFF),
+                          unsigned((ip_param >>  8) & 0xFF),
+                          unsigned( ip_param        & 0xFF));
             ppp_set_ipcp_ouraddr(inst.ppp, &our_ip);
+        } else {
+            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "PPP[%u]: ip_param=0, IPCP will propose 0.0.0.0", unsigned(idx));
         }
     }
+    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "PPP[%u]: calling ppp_connect", unsigned(idx));
     ppp_connect(inst.ppp, 0);
     if (idx == 0) {
         netif_set_default(inst.pppif);
