@@ -60,6 +60,17 @@ CH_LABELS = [
     "CH8  Aux4     ",
 ]
 
+SV_LABELS = [
+    "SV1  L-Elevon ",
+    "SV2  R-Elevon ",
+    "SV3  Throttle ",
+    "SV4  Rudder   ",
+    "SV5  Aux1     ",
+    "SV6  Aux2     ",
+    "SV7  Aux3     ",
+    "SV8  Aux4     ",
+]
+
 # ── PWM helpers ──────────────────────────────────────────────────────────────
 
 def _axis_pwm(v: float, invert: bool = False) -> int:
@@ -151,7 +162,7 @@ def _bar(pwm: int) -> str:
 
 
 def render(channels: list[int], joy_name: str, connect: str,
-           n_ax: int, n_btn: int, n_sent: int):
+           n_ax: int, n_btn: int, n_sent: int, servo_raw: list[int]):
     lines = ["\033[H\033[J"]                 # cursor home + clear screen
     lines.append(f" Joystick : {joy_name}  (axes={n_ax}  buttons={n_btn})")
     lines.append(f" MAVLink  : {connect}   packets sent={n_sent}")
@@ -161,6 +172,13 @@ def render(channels: list[int], joy_name: str, connect: str,
     for i, pwm in enumerate(channels):
         label = CH_LABELS[i] if i < len(CH_LABELS) else f"CH{i+1:<5}       "
         bar   = _bar(pwm)
+        lines.append(f"  {label}  [{bar}]  {pwm:4d}")
+    lines.append(f"  {'─'*56}")
+    lines.append(f"  {'Servo out':<18}  1000{'':>{BAR_WIDTH//2 - 2}}1500{'':>{BAR_WIDTH//2 - 2}}2000   µs")
+    lines.append(f"  {'─'*56}")
+    for i, pwm in enumerate(servo_raw):
+        label = SV_LABELS[i] if i < len(SV_LABELS) else f"SV{i+1:<5}       "
+        bar   = _bar(pwm) if pwm else " " * BAR_WIDTH
         lines.append(f"  {label}  [{bar}]  {pwm:4d}")
     lines.append(f"  {'─'*56}")
     lines.append("  Ctrl-C to quit")
@@ -234,6 +252,7 @@ def main():
     signal.signal(signal.SIGTERM, _shutdown)
 
     connect_label = args.connect if master else "(no MAVLink)"
+    servo_raw     = [0] * 8
 
     try:
         while running:
@@ -246,7 +265,17 @@ def main():
                 send_override(master, channels)
                 n_sent += 1
 
-            render(channels, joy_name, connect_label, n_ax, n_btn, n_sent)
+                # Drain all pending SERVO_OUTPUT_RAW messages; keep the latest.
+                while True:
+                    msg = master.recv_match(type="SERVO_OUTPUT_RAW", blocking=False)
+                    if msg is None:
+                        break
+                    servo_raw = [
+                        msg.servo1_raw, msg.servo2_raw, msg.servo3_raw, msg.servo4_raw,
+                        msg.servo5_raw, msg.servo6_raw, msg.servo7_raw, msg.servo8_raw,
+                    ]
+
+            render(channels, joy_name, connect_label, n_ax, n_btn, n_sent, servo_raw)
 
             elapsed = time.monotonic() - t0
             rem = interval - elapsed
