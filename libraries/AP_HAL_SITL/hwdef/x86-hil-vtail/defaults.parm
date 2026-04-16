@@ -1,0 +1,89 @@
+# Default parameters for x86-hil-vtail (SITL-on-laptop with X-Plane backend)
+# Target machine: x86 PC / laptop running ArduPlane as SITL binary.
+# V-tail layout: CH1=aileron, CH2=vtail_right, CH3=throttle, CH4=vtail_left.
+#
+# Build:  ./waf configure --board sitl && ./waf plane
+# Run:    sim_vehicle.py -v ArduPlane -f plane-vtail-x86-hil --model xplane
+#
+# Differences from fmuv3-hil-vtail:
+#   - EKF type 10 (SIM backend, direct X-Plane quaternion — zero heading lag)
+#   - No SCHED_LOOP_RATE cap (x86 scheduler handles 400 Hz)
+#   - Logging enabled to disk
+#   - No PPP/NET setup (SITL XPlane backend uses direct UDP sockets)
+
+# ── AHRS / attitude source ────────────────────────────────────────────────────
+# AHRS_EKF_TYPE 10 = SIM backend. Attitude read directly from X-Plane quaternion.
+# Guarantees zero-lag heading agreement with X-Plane.
+AHRS_EKF_TYPE 10
+EK3_ENABLE 1
+EK2_ENABLE 0
+
+# ── Sensors — SITL backends ──────────────────────────────────────────────────
+GPS1_TYPE 100
+ARSPD_TYPE 100
+
+# ── Compass — keep only one SITL instance ────────────────────────────────────
+COMPASS_USE  1
+COMPASS_USE2 0
+COMPASS_USE3 0
+SIM_MAG2_DEVID 0
+SIM_MAG3_DEVID 0
+
+# ── Safety / arming ───────────────────────────────────────────────────────────
+BRD_SAFETY_DEFLT 0
+ARMING_SKIPCHK -1
+ARMING_REQUIRE 1
+
+# ── RC ───────────────────────────────────────────────────────────────────────
+THR_FAILSAFE 0
+RC_OVERRIDE_TIME -1
+
+# ── SITL speedup ─────────────────────────────────────────────────────────────
+SIM_SPEEDUP 1
+
+# ── Servo output functions — V-tail ──────────────────────────────────────────
+# ArduPlane's channel_function_mixer runs automatically when vtail_right and
+# vtail_left functions are assigned:
+#   vtail_right (CH2) = (elevator - rudder) * MIXING_GAIN
+#   vtail_left  (CH4) = (elevator + rudder) * MIXING_GAIN
+SERVO1_FUNCTION 4    # Aileron
+SERVO2_FUNCTION 80   # Vtail_right  (elevator - rudder)
+SERVO3_FUNCTION 70   # Throttle
+SERVO4_FUNCTION 79   # Vtail_left   (elevator + rudder)
+
+# MIXING_GAIN: scales vtail surface deflection (default 0.5)
+MIXING_GAIN 0.5
+
+# ── RC input channel mapping ──────────────────────────────────────────────────
+RCMAP_ROLL      1
+RCMAP_PITCH     2
+RCMAP_THROTTLE  3
+RCMAP_YAW       4
+
+# ── Auto takeoff — ground roll + steering ─────────────────────────────────────
+TKOFF_THR_MINACC 0
+TKOFF_THR_MINSPD 0
+TKOFF_THR_DELAY 0
+TKOFF_THR_MAX 100
+TKOFF_ROTATE_SPD 12
+GROUND_STEER_ALT 5
+TKOFF_TDRAG_ELEV 0
+TKOFF_TDRAG_SPD1 0
+
+# ── SITL servo override ───────────────────────────────────────────────────────
+SIM_OH_MASK 255
+
+# ── SITL home position — Bandung WICC ─────────────────────────────────────────
+SIM_OPOS_LAT -6.897434
+SIM_OPOS_LNG  107.566887
+SIM_OPOS_ALT  744.0
+SIM_OPOS_HDG  108.0
+
+# ── Tracking target position ──────────────────────────────────────────────────
+TRK_TGT_LAT -6.897367724
+TRK_TGT_LON  107.566559898
+TRK_TGT_ALT  744.0
+
+# ── Networking ────────────────────────────────────────────────────────────────
+# On x86/SITL the XPlane backend uses direct UDP sockets — no PPP needed.
+# GCS (QGC / MAVProxy) connects to the SITL MAVLink port (default TCP 5760 / UDP 14550).
