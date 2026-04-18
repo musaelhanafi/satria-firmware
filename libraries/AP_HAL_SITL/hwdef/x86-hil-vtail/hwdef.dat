@@ -1,6 +1,28 @@
+<<<<<<< HEAD
 # x86-hil-vtail: SITL board for HIL with X-Plane on x86/laptop, V-tail airframe.
 # CH1=aileron, CH2=right ruddervator, CH3=throttle, CH4=left ruddervator.
 # ArduPlane mixes elevator+rudder into CH2/CH4 via VTAIL_OUTPUT before output.
 include ../sitl/hwdef.dat
 
+=======
+# x86-hil-vtail: SITL board for HIL with X-Plane on x86/laptop — V-tail airframe.
+# Inherits the base SITL HAL; builds natively on x86, no cross-compile needed.
+# V-tail layout: CH1=aileron, CH2=vtail_right, CH3=throttle, CH4=vtail_left.
+#
+# ArduPlane V-tail mixing (channel_function_mixer):
+#   CH2 (vtail_right) = (elevator - rudder) * MIXING_GAIN
+#   CH4 (vtail_left)  = (elevator + rudder) * MIXING_GAIN
+#
+# SIM_XPlane demixes the vtail servo signals back to pure pitch/yaw
+# before sending yoke_pitch_ratio and yoke_heading_ratio to X-Plane.
+# X-Plane aircraft model must be configured with V-tail in Plane Maker.
+#
+# Build:  ./waf configure --board sitl && ./waf plane
+# Run:    sim_vehicle.py -v ArduPlane -f plane-vtail-x86-hil --model xplane
+#
+# Parameters for the HIL/XPlane session are in defaults.parm.
+include ../sitl/hwdef.dat
+
+# Use the V-tail DREF map instead of the default xplane_plane.json.
+>>>>>>> 2c6da79070431b051a28730aec332856c92f632d
 define XPLANE_JSON "xplane_vtail.json"

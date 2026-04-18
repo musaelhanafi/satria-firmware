@@ -770,18 +770,23 @@ void XPlane::send_drefs(const struct sitl_input &input)
             break;
         }
         case DRefType::VTAIL_ELEVATOR: {
-            // elevator = (right_ruddervator + left_ruddervator - 3000) / 1000
+            // Demix vtail → elevator: pitch = -(vtail_right + vtail_left - 3000) / 1000
+            // channel = vtail_right (CH2), channel2 = vtail_left (CH4)
+            // ArduPlane mixer: vtail_right=(elev-rud)*gain, vtail_left=(elev+rud)*gain
+            // Sum cancels rudder: vtail_right+vtail_left = 2*elev*gain → pitch ∝ (ch1+ch2-3000)
             const float ch1 = input.servos[d->channel-1];
             const float ch2 = input.servos[d->channel2-1];
-            v = d->range * (ch1 + ch2 - 3000.0f) / 1000.0f;
+            v = -d->range * (ch1 + ch2 - 3000.0f) / 1000.0f;
             v = constrain_float(v, -d->range, d->range);
             break;
         }
         case DRefType::VTAIL_RUDDER: {
-            // rudder = (right_ruddervator - left_ruddervator) / 1000
+            // Demix vtail → rudder: heading = (vtail_left - vtail_right) / 1000
+            // channel = vtail_right (CH2), channel2 = vtail_left (CH4)
+            // Difference cancels elevator: vtail_left-vtail_right = 2*rud*gain → heading ∝ (ch2-ch1)
             const float ch1 = input.servos[d->channel-1];
             const float ch2 = input.servos[d->channel2-1];
-            v = d->range * (ch1 - ch2) / 1000.0f;
+            v = d->range * (ch2 - ch1) / 1000.0f;
             v = constrain_float(v, -d->range, d->range);
             break;
         }

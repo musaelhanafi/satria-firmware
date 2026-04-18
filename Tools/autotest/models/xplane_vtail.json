@@ -1,8 +1,16 @@
 # XPlane DREF map file for a V-tail aircraft
-# assumes: CH1=aileron, CH2=right ruddervator, CH3=throttle, CH4=left ruddervator
-# ArduPlane VTAIL_OUTPUT mixes elevator+rudder into CH2/CH4 before output.
-# vtail_elevator demix: pitch = (ch2 + ch4 - 3000) / 1000
-# vtail_rudder   demix: yaw   = (ch2 - ch4) / 1000
+# assumes: SERVO1=aileron (CH1), SERVO2=vtail_right (CH2), SERVO3=throttle (CH3), SERVO4=vtail_left (CH4)
+#
+# ArduPlane V-tail mixing (channel_function_mixer):
+#   vtail_right (CH2) = (elevator - rudder) * MIXING_GAIN
+#   vtail_left  (CH4) = (elevator + rudder) * MIXING_GAIN
+#
+# SIM_XPlane demixes back to pure pitch/yaw for X-Plane yoke inputs:
+#   yoke_pitch_ratio   = -(vtail_right + vtail_left - 3000) / 1000   [vtail_elevator]
+#   yoke_heading_ratio = (vtail_left  - vtail_right)        / 1000   [vtail_rudder]
+#
+# X-Plane model must be configured with V-tail in Plane Maker so that
+# yoke_pitch and yoke_heading drive the physical V-tail surfaces correctly.
 
 {
     "settings" : { "debug" : 0 },
@@ -10,9 +18,13 @@
     "sim/operation/override/override_joystick"  : { "type" : "fixed", "value" : 1 },
     "sim/operation/override/override_throttles" : { "type" : "fixed", "value" : 1 },
 
-    "sim/joystick/yoke_roll_ratio"    : { "type" : "angle",          "range" : 1.0, "channel" : 1 },
+    # aileron on CH1 — direct angle mapping
+    "sim/joystick/yoke_roll_ratio" : { "type" : "angle", "range" : 1.0, "channel" : 1 },
+
+    # vtail demix: channel=vtail_right (CH2), channel2=vtail_left (CH4)
     "sim/joystick/yoke_pitch_ratio"   : { "type" : "vtail_elevator", "range" : 1.0, "channel" : 2, "channel2" : 4 },
     "sim/joystick/yoke_heading_ratio" : { "type" : "vtail_rudder",   "range" : 1.0, "channel" : 2, "channel2" : 4 },
 
+    # throttle on CH3
     "sim/flightmodel/engine/ENGN_thro_use[0]" : { "type" : "range", "range" : 1, "channel" : 3 }
 }

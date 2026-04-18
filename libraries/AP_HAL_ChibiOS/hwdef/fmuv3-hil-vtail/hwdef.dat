@@ -1,24 +1,48 @@
 # hwdef for fmuv3-hil-vtail
+<<<<<<< HEAD
 # fmuv3 (Pixhawk1) SITL-on-hardware with X-Plane, V-tail airframe.
+=======
+# fmuv3 (Pixhawk1) SITL-on-hardware with X-Plane as the physics backend.
+# V-tail layout: CH1=aileron, CH2=vtail_right, CH3=throttle, CH4=vtail_left.
+# ArduPlane mixes elevator+rudder → vtail surfaces; SIM_XPlane demixes for X-Plane.
+>>>>>>> 2c6da79070431b051a28730aec332856c92f632d
 #
 # Architecture:
 #   - AP_SIM_FRAME_CLASS=XPlane: SITL XPlane backend runs on the MCU.
 #   - PPP over TELEM2 (SERIAL2) gives the Pixhawk an IP to reach X-Plane.
 #     PC: sudo pppd /dev/tty.usbserial-XXXX 115200 10.0.0.1:10.0.0.2 noauth local nodetach asyncmap 0 novj nopcomp noaccomp lcp-echo-interval 0
+<<<<<<< HEAD
 #   - CH1=aileron, CH2=right ruddervator, CH3=throttle, CH4=left ruddervator.
 #   - ArduPlane VTAIL_OUTPUT mixes elevator+rudder into CH2/CH4 before output.
 #   - SIMState (GPS/IMU/Baro/Compass backends) reads from X-Plane data.
 #   - Safety switch disabled; servos output immediately on boot.
 #
+=======
+#   - SITL sends vtail/throttle DREFs to X-Plane, receives DATA@ physics back.
+#   - SIMState (GPS/IMU/Baro/Compass backends) reads from X-Plane data.
+#   - Safety switch disabled; servos output immediately on boot.
+#
+# V-tail mixing (ArduPlane channel_function_mixer):
+#   CH2 (vtail_right) = (elevator - rudder) * MIXING_GAIN
+#   CH4 (vtail_left)  = (elevator + rudder) * MIXING_GAIN
+#
+>>>>>>> 2c6da79070431b051a28730aec332856c92f632d
 # Build:
 #   ./waf configure --board fmuv3-hil-vtail
 #   ./waf plane
 #
 # X-Plane setup:
 #   Settings → Net Connections → Data: send DATA@ to 10.0.0.2:49005
+<<<<<<< HEAD
 #   Rows: 1 (times), 3 (speed), 4 (Gload), 16 (ang vel),
 #         17 (pitch/roll/hdg), 20 (lat/lon/alt), 21 (local vel),
 #         37 (engine RPM), 38 (prop RPM), 39 (prop pitch)
+=======
+#   Rows: 1 (times), 3 (speed), 4 (Gload), 13 (trim), 16 (ang vel),
+#         17 (pitch/roll/hdg), 20 (lat/lon/alt), 21 (local vel),
+#         37 (engine RPM), 38 (prop RPM), 39 (prop pitch)
+#   X-Plane aircraft model must be configured with V-tail in Plane Maker.
+>>>>>>> 2c6da79070431b051a28730aec332856c92f632d
 
 include ../fmuv3/hwdef.dat
 
@@ -28,6 +52,10 @@ env SIM_ENABLED 1
 define AP_SIM_FRAME_CLASS XPlane
 define AP_SIM_FRAME_STRING "xplane:10.0.0.1"
 
+<<<<<<< HEAD
+=======
+# JSON DREF map embedded in ROMFS for V-tail airframe
+>>>>>>> 2c6da79070431b051a28730aec332856c92f632d
 define XPLANE_JSON "@ROMFS/xplane_vtail.json"
 
 define AP_SIM_INS_FILE_ENABLED 0
