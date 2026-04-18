@@ -94,6 +94,8 @@ private:
         FIXED = 2,
         ELEVON_AILERON  = 3,  // recovers aileron  from two elevon channels
         ELEVON_ELEVATOR = 4,  // recovers elevator from two elevon channels
+        VTAIL_ELEVATOR  = 5,  // recovers elevator from two ruddervator channels
+        VTAIL_RUDDER    = 6,  // recovers rudder   from two ruddervator channels
     };
 
     struct DRef {

@@ -1,0 +1,65 @@
+# Default parameters for x86-hil-vtail (SITL-on-laptop with X-Plane, V-tail airframe)
+# CH1=aileron, CH2=right ruddervator, CH3=throttle, CH4=left ruddervator.
+# ArduPlane mixes elevator+rudder into CH2/CH4 via VTAIL_OUTPUT before output.
+#
+# Build:  ./waf configure --board x86-hil-vtail && ./waf plane
+# Run:    sim_vehicle.py -v ArduPlane --model xplane
+
+# ── AHRS / attitude source ────────────────────────────────────────────────────
+# Read attitude directly from X-Plane fdm.quaternion — no EKF compass lag.
+AHRS_EKF_TYPE 10
+EK3_ENABLE 1
+EK2_ENABLE 0
+
+# ── Sensors — SITL backends ──────────────────────────────────────────────────
+GPS1_TYPE 100
+ARSPD_TYPE 100
+
+# ── Compass — SITL backend ────────────────────────────────────────────────────
+# Keep only the first SITL compass; zero extra phantom MAG device IDs.
+COMPASS_USE  1
+COMPASS_USE2 0
+COMPASS_USE3 0
+SIM_MAG2_DEVID 0
+SIM_MAG3_DEVID 0
+
+# ── Safety / arming ───────────────────────────────────────────────────────────
+BRD_SAFETY_DEFLT 0
+ARMING_SKIPCHK -1
+ARMING_REQUIRE 1
+
+# ── RC ───────────────────────────────────────────────────────────────────────
+THR_FAILSAFE 0
+RC_OVERRIDE_TIME -1
+
+# ── SITL speedup ─────────────────────────────────────────────────────────────
+SIM_SPEEDUP 1
+
+# ── V-tail mixing ─────────────────────────────────────────────────────────────
+# VTAIL_OUTPUT 1: CH2=elevator+rudder (right ruddervator), CH4=elevator-rudder
+# SIM_XPlane demixes via vtail_elevator/vtail_rudder DREFs in xplane_vtail.json.
+VTAIL_OUTPUT 1
+
+# ── Auto takeoff ──────────────────────────────────────────────────────────────
+TKOFF_THR_MINACC 0
+TKOFF_THR_MINSPD 0
+TKOFF_THR_DELAY 0
+TKOFF_THR_MAX 100
+TKOFF_ROTATE_SPD 12
+GROUND_STEER_ALT 5
+TKOFF_TDRAG_ELEV 0
+TKOFF_TDRAG_SPD1 0
+
+# ── SITL servo override ───────────────────────────────────────────────────────
+SIM_OH_MASK 255
+
+# ── SITL home position — Bandung WICC ─────────────────────────────────────────
+SIM_OPOS_LAT -6.897434
+SIM_OPOS_LNG  107.566887
+SIM_OPOS_ALT  744.0
+SIM_OPOS_HDG  108.0
+
+# ── Tracking target position ──────────────────────────────────────────────────
+TRK_TGT_LAT -6.897367724
+TRK_TGT_LON  107.566559898
+TRK_TGT_ALT  744.0

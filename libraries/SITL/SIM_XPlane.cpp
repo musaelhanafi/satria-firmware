@@ -175,10 +175,9 @@ void XPlane::add_dref(const char *name, DRefType type, const AP_JSON::value &dre
     } else {
         d->range = dref.get("range").get<double>();
         d->channel = dref.get("channel").get<double>();
-        if (d->type == DRefType::ELEVON_AILERON || d->type == DRefType::ELEVON_ELEVATOR) {
+        if (d->type == DRefType::ELEVON_AILERON || d->type == DRefType::ELEVON_ELEVATOR ||
+            d->type == DRefType::VTAIL_ELEVATOR  || d->type == DRefType::VTAIL_RUDDER) {
             d->channel2 = dref.get("channel2").get<double>();
-            // optional "gain": inverse of ArduPlane MIXING_GAIN baked into the
-            // elevon PWM.  Default 1.0 (no correction).
         }
     }
     // add to linked list
@@ -290,6 +289,10 @@ bool XPlane::load_dref_map(const char *map_json)
                 add_dref(label, DRefType::ELEVON_AILERON, d);
             } else if (strcmp(type_s, "elevon_elevator") == 0) {
                 add_dref(label, DRefType::ELEVON_ELEVATOR, d);
+            } else if (strcmp(type_s, "vtail_elevator") == 0) {
+                add_dref(label, DRefType::VTAIL_ELEVATOR, d);
+            } else if (strcmp(type_s, "vtail_rudder") == 0) {
+                add_dref(label, DRefType::VTAIL_RUDDER, d);
             } else {
                 ::printf("Invalid dref type %s for %s in %s", type_s, label, map_filename);
             }
@@ -763,6 +766,22 @@ void XPlane::send_drefs(const struct sitl_input &input)
             const float ch1 = input.servos[d->channel-1];
             const float ch2 = input.servos[d->channel2-1];
             v = -d->range * (ch1 + ch2 - 3000.0f) / 1000.0f;
+            v = constrain_float(v, -d->range, d->range);
+            break;
+        }
+        case DRefType::VTAIL_ELEVATOR: {
+            // elevator = (right_ruddervator + left_ruddervator - 3000) / 1000
+            const float ch1 = input.servos[d->channel-1];
+            const float ch2 = input.servos[d->channel2-1];
+            v = d->range * (ch1 + ch2 - 3000.0f) / 1000.0f;
+            v = constrain_float(v, -d->range, d->range);
+            break;
+        }
+        case DRefType::VTAIL_RUDDER: {
+            // rudder = (right_ruddervator - left_ruddervator) / 1000
+            const float ch1 = input.servos[d->channel-1];
+            const float ch2 = input.servos[d->channel2-1];
+            v = d->range * (ch1 - ch2) / 1000.0f;
             v = constrain_float(v, -d->range, d->range);
             break;
         }

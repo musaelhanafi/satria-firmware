@@ -1,0 +1,18 @@
+# XPlane DREF map file for a V-tail aircraft
+# assumes: CH1=aileron, CH2=right ruddervator, CH3=throttle, CH4=left ruddervator
+# ArduPlane VTAIL_OUTPUT mixes elevator+rudder into CH2/CH4 before output.
+# vtail_elevator demix: pitch = (ch2 + ch4 - 3000) / 1000
+# vtail_rudder   demix: yaw   = (ch2 - ch4) / 1000
+
+{
+    "settings" : { "debug" : 0 },
+
+    "sim/operation/override/override_joystick"  : { "type" : "fixed", "value" : 1 },
+    "sim/operation/override/override_throttles" : { "type" : "fixed", "value" : 1 },
+
+    "sim/joystick/yoke_roll_ratio"    : { "type" : "angle",          "range" : 1.0, "channel" : 1 },
+    "sim/joystick/yoke_pitch_ratio"   : { "type" : "vtail_elevator", "range" : 1.0, "channel" : 2, "channel2" : 4 },
+    "sim/joystick/yoke_heading_ratio" : { "type" : "vtail_rudder",   "range" : 1.0, "channel" : 2, "channel2" : 4 },
+
+    "sim/flightmodel/engine/ENGN_thro_use[0]" : { "type" : "range", "range" : 1, "channel" : 3 }
+}

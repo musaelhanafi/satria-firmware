@@ -60,16 +60,38 @@ CH_LABELS = [
     "CH8  Aux4     ",
 ]
 
-SV_LABELS = [
-    "SV1  L-Elevon ",
-    "SV2  R-Elevon ",
-    "SV3  Throttle ",
-    "SV4  Rudder   ",
-    "SV5  Aux1     ",
-    "SV6  Aux2     ",
-    "SV7  Aux3     ",
-    "SV8  Aux4     ",
-]
+_SV_LABELS = {
+    "plane": [
+        "SV1  Aileron  ",
+        "SV2  Elevator ",
+        "SV3  Throttle ",
+        "SV4  Rudder   ",
+        "SV5  Aux1     ",
+        "SV6  Aux2     ",
+        "SV7  Aux3     ",
+        "SV8  Aux4     ",
+    ],
+    "vtail": [
+        "SV1  Aileron  ",
+        "SV2  R-Rudvtr ",
+        "SV3  Throttle ",
+        "SV4  L-Rudvtr ",
+        "SV5  Aux1     ",
+        "SV6  Aux2     ",
+        "SV7  Aux3     ",
+        "SV8  Aux4     ",
+    ],
+    "elevon": [
+        "SV1  L-Elevon ",
+        "SV2  R-Elevon ",
+        "SV3  Throttle ",
+        "SV4  Rudder   ",
+        "SV5  Aux1     ",
+        "SV6  Aux2     ",
+        "SV7  Aux3     ",
+        "SV8  Aux4     ",
+    ],
+}
 
 # ── PWM helpers ──────────────────────────────────────────────────────────────
 
@@ -162,10 +184,12 @@ def _bar(pwm: int) -> str:
 
 
 def render(channels: list[int], joy_name: str, connect: str,
-           n_ax: int, n_btn: int, n_sent: int, servo_raw: list[int]):
+           n_ax: int, n_btn: int, n_sent: int, servo_raw: list[int],
+           sv_labels: list[str], airframe: str):
     lines = ["\033[H\033[J"]                 # cursor home + clear screen
     lines.append(f" Joystick : {joy_name}  (axes={n_ax}  buttons={n_btn})")
     lines.append(f" MAVLink  : {connect}   packets sent={n_sent}")
+    lines.append(f" Airframe : {airframe.upper()}")
     lines.append(f" {'─'*56}")
     lines.append(f"  {'Channel':<18}  1000{'':>{BAR_WIDTH//2 - 2}}1500{'':>{BAR_WIDTH//2 - 2}}2000   µs")
     lines.append(f"  {'─'*56}")
@@ -177,7 +201,7 @@ def render(channels: list[int], joy_name: str, connect: str,
     lines.append(f"  {'Servo out':<18}  1000{'':>{BAR_WIDTH//2 - 2}}1500{'':>{BAR_WIDTH//2 - 2}}2000   µs")
     lines.append(f"  {'─'*56}")
     for i, pwm in enumerate(servo_raw):
-        label = SV_LABELS[i] if i < len(SV_LABELS) else f"SV{i+1:<5}       "
+        label = sv_labels[i] if i < len(sv_labels) else f"SV{i+1:<5}       "
         bar   = _bar(pwm) if pwm else " " * BAR_WIDTH
         lines.append(f"  {label}  [{bar}]  {pwm:4d}")
     lines.append(f"  {'─'*56}")
@@ -203,6 +227,9 @@ def main():
                         help="Send rate in Hz (default: 20)")
     parser.add_argument("--no-mavlink", action="store_true",
                         help="Visualize only — do not open a MAVLink connection")
+    parser.add_argument("--airframe", default="plane",
+                        choices=["plane", "vtail", "elevon"],
+                        help="Airframe type for servo label display (default: plane)")
     args = parser.parse_args()
 
     # ── MAVLink ──────────────────────────────────────────────────────────────
@@ -253,6 +280,7 @@ def main():
 
     connect_label = args.connect if master else "(no MAVLink)"
     servo_raw     = [0] * 8
+    sv_labels     = _SV_LABELS[args.airframe]
 
     try:
         while running:
@@ -275,7 +303,8 @@ def main():
                         msg.servo5_raw, msg.servo6_raw, msg.servo7_raw, msg.servo8_raw,
                     ]
 
-            render(channels, joy_name, connect_label, n_ax, n_btn, n_sent, servo_raw)
+            render(channels, joy_name, connect_label, n_ax, n_btn, n_sent, servo_raw,
+                   sv_labels, args.airframe)
 
             elapsed = time.monotonic() - t0
             rem = interval - elapsed
