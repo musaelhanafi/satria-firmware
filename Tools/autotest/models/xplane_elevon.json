@@ -9,6 +9,7 @@
 
     "sim/operation/override/override_joystick"  : { "type" : "fixed", "value" : 1 },
     "sim/operation/override/override_throttles" : { "type" : "fixed", "value" : 1 },
+    "sim/flightmodel/misc/jato_left"            : { "type" : "fixed", "value" : 1.0 },
 
     # elevon demix: channel=SERVO1 (left elevon), channel2=SERVO2 (right elevon)
     # MIXING_GAIN is read at runtime from the ArduPlane MIXING_GAIN param.

@@ -75,6 +75,7 @@ void ModeTracking::_exit()
     _cruise_throttle   = plane.aparm.throttle_cruise.get();
     plane.g2.tracking_throt_pid.reset_I();
     plane.g2.tracking_throt_pid.reset_filter();
+    RC_Channels::clear_overrides();
     gcs().send_text(MAV_SEVERITY_INFO, "Tracking: exit");
 }
 
@@ -110,14 +111,6 @@ void ModeTracking::update()
     // Deadband is needed in both branches.
     const float deadband_rad = plane.g2.tracking_deadband_deg.get() * (M_PI / 180.0f);
 
-    // in_terminal — hoisted so both PID and throttle branches can use it.
-    // Activates when the drone is within TRK_TERM_ALT metres above TRK_TGT_ALT (MSL).
-    const float term_alt        = plane.g2.tracking_term_alt.get();
-    const float current_alt_msl = plane.current_loc.alt * 0.01f;   // cm → m MSL
-    const float target_alt_msl  = plane.g2.tracking_target_alt_msl.get();
-    const bool  in_terminal     = (term_alt > 0.0f &&
-                                   (current_alt_msl - target_alt_msl) <= term_alt);
-
     // Horizontal distance to target using TRK_TGT_LAT / TRK_TGT_LON.
     // Mirrors seekerctrl.py _dist_to_target_m() (haversine via Location::get_distance).
     const Location target_loc(
@@ -141,9 +134,9 @@ void ModeTracking::update()
     // Periodic 1 Hz console log: distance, terminal and close flags, altitude.
     if (now_ms - _last_dist_log_ms >= 1000U) {
         _last_dist_log_ms = now_ms;
-        ::printf("TRK dist=%.1fm close=%d term=%d alt=%.1fm\n",
+        ::printf("TRK dist=%.1fm close=%d alt=%.1fm\n",
                  (double)horiz_dist_m, (int)close_enough,
-                 (int)in_terminal, (double)current_alt_msl);
+                 (double)(plane.current_loc.alt * 0.01f));
     }
 
     // Settle ramp — computed here so throttle can also use it.
@@ -206,18 +199,22 @@ void ModeTracking::update()
                                                    plane.roll_limit_cd);
         }
 
-        // ── Pitch PID ────────────────────────────────────────────────────────
-        // errory > 0 → target is above → pitch up (positive setpoint).
-        // TRK_PITCH_OFFSET: constant cruise bias (converted to rad).
-        // TRK_TERM_PTCH:    additional pitch-down added in terminal phase only,
-        //                   to counter the nose-up moment from full throttle.
-        float pitch_offset_deg = plane.g2.tracking_pitch_offset.get();
-        if (in_terminal) {
-            pitch_offset_deg += plane.g2.tracking_term_pitch.get();  // add → larger offset → more nose-down
+        // ── Yaw / roll mix (vtail and conventional plane only) ───────────────
+        // Elevon aircraft have no separate rudder — skip yaw command entirely.
+        // For vtail/plane use calc_nav_yaw_coordinated() so the attitude
+        // controller adds the correct slip correction for the current bank.
+        {
+            const bool is_elevon = SRV_Channels::function_assigned(SRV_Channel::k_elevon_left) ||
+                                   SRV_Channels::function_assigned(SRV_Channel::k_elevon_right);
+            if (!is_elevon) {
+                plane.calc_nav_yaw_coordinated();
+            }
         }
-        const float pitch_offset_rad = pitch_offset_deg * (M_PI / 180.0f);
+
+        // ── Pitch PID ────────────────────────────────────────────────────────
+        // errory already has TRK_PITCH_OFFSET subtracted on the GCS side.
         ey_raw = fabsf(_errory_rad) > deadband_rad ? _errory_rad : 0.0f;
-        ey     = ey_raw - pitch_offset_rad;
+        ey     = ey_raw;
         if (is_zero(ey_raw)) {
             plane.g2.tracking_pitch_pid.reset_I();
         }

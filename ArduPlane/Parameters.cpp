@@ -1332,23 +1332,7 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @User: Standard
     AP_GROUPINFO("TRK_PITCH_OFFSET", 47, ParametersG2, tracking_pitch_offset, 3.0f),
 
-    // @Param: TRK_TERM_ALT
-    // @DisplayName: Tracking terminal phase altitude
-    // @Description: Altitude margin (m) above TRK_TGT_ALT below which terminal phase activates. Set to 0 to disable.
-    // @Units: m
-    // @Range: 0 200
-    // @Increment: 1
-    // @User: Standard
-    AP_GROUPINFO("TRK_TERM_ALT", 48, ParametersG2, tracking_term_alt, 0.0f),
 
-    // @Param: TRK_TERM_PTCH
-    // @DisplayName: Tracking terminal pitch-down compensation
-    // @Description: Additional pitch-down bias (deg) added to the PID setpoint during the terminal phase. Compensates for the nose-up pitching moment caused by full throttle.
-    // @Units: deg
-    // @Range: 0 20
-    // @Increment: 0.5
-    // @User: Standard
-    AP_GROUPINFO("TRK_TERM_PTCH", 49, ParametersG2, tracking_term_pitch, 0.0f),
 
     // @Param: TRK_APP_SPD
     // @DisplayName: Tracking approach airspeed

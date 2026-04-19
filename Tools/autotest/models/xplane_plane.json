@@ -4,8 +4,9 @@
 {
     "settings" : { "debug" : 0 },
 
-    "sim/operation/override/override_joystick" : { "type" : "fixed", "value" : 1 },
+    "sim/operation/override/override_joystick"  : { "type" : "fixed", "value" : 1 },
     "sim/operation/override/override_throttles" : { "type" : "fixed", "value" : 1 },
+    "sim/flightmodel/misc/jato_left"            : { "type" : "fixed", "value" : 1.0 },
 
     # forward throttle, up to 4 engines
     "sim/flightmodel/engine/ENGN_thro_use[0]" : { "type" : "range", "range" : 1, "channel" : 3 },

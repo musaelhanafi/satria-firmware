@@ -17,6 +17,7 @@
 
     "sim/operation/override/override_joystick"  : { "type" : "fixed", "value" : 1 },
     "sim/operation/override/override_throttles" : { "type" : "fixed", "value" : 1 },
+    "sim/flightmodel/misc/jato_left"            : { "type" : "fixed", "value" : 1.0 },
 
     # aileron on CH1 — direct angle mapping
     "sim/joystick/yoke_roll_ratio" : { "type" : "angle", "range" : 1.0, "channel" : 1 },

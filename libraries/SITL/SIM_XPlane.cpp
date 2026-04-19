@@ -697,6 +697,8 @@ void XPlane::handle_rref(const uint8_t *pkt, uint32_t len)
 
 void XPlane::send_drefs(const struct sitl_input &input)
 {
+    // On joystick release request (e.g. TRACKING mode exit): send 0 to all
+    // non-FIXED DREFs immediately so X-Plane neutralises yoke and throttle.
     // On arm transition, reset deadband so all DREFs are re-sent immediately.
     const bool armed = hal.util->get_soft_armed();
     if (armed != last_armed) {
