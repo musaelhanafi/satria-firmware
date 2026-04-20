@@ -1,13 +1,13 @@
 # F4BY_H743
 
-The F4BY_H743 autopilot is manufactured by `F4BY Team <https://f4by.com>`__
+The F4BY_H743 autopilot is manufactured by [F4BY Team](https://f4by.com)
 
 ![F4BY_H743](F4BY_H743_board_image.jpg)
 
 ## Where to Buy
 
-Shop `here https://f4by.com/en/?order/our_product`__
-The instructions, schematic, 3D model  are available `here https://f4by.com/en/?doc/fc_f4by_v3.0.1_h743`__
+Shop [here](https://f4by.com/en/?order/our_product)
+The instructions, schematic, 3D model  are available [here](https://f4by.com/en/?doc/fc_f4by_v3.0.1_h743)
 
 ## Specifications
 
@@ -48,13 +48,13 @@ The instructions, schematic, 3D model  are available `here https://f4by.com/en/?
 ## Analog Airspeed
 
 If the ARSPD pin is used for analog airspeed  input.
-Set :ref:`ARSPD_PIN<ARSPD_PIN>` to 10.
-Set :ref:`ARSPD_TYPE<ARSPD_TYPE>` to "1".
+Set [ARSPD_PIN](https://ardupilot.org/copter/docs/parameters.html#arspd-pin-airspeed-pin) to 10.
+Set [ARSPD_TYPE](https://ardupilot.org/copter/docs/parameters.html#arspd-type-airspeed-type) to "1".
 
 ## Analog RSSI
 
-If the RSSI pin is used for analog RSSI input. Set :ref:`RSSI_ANA_PIN<RSSI_ANA_PIN>` to 11.
-Set :ref:`RSSI_TYPE<RSSI_TYPE>` to "1" .
+If the RSSI pin is used for analog RSSI input. Set [RSSI_ANA_PIN](https://ardupilot.org/copter/docs/parameters.html#rssi-ana-pin-receiver-rssi-sensing-pin) to 11.
+Set [RSSI_TYPE](https://ardupilot.org/copter/docs/parameters.html#rssi-type-rssi-type) to "1" .
 
 ## UART Mapping
 
