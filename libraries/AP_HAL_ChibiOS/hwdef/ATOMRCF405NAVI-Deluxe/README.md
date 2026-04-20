@@ -2,9 +2,9 @@
 
 ![ATOMRCF405NAVI-Deluxe](atomrcf405-navi-deluxe.jpg)
 
-the above image and some content courtesy of `ATOMRC <http://atomrc.com/>`__
+the above image and some content courtesy of [ATOMRC](http://atomrc.com/)
 
-> **Note:** Due to flash memory limitations, this board does not include all ArduPilot features. See :ref:`Firmware Limitations <common-limited_firmware>` for details.
+> **Note:** Due to flash memory limitations, this board does not include all ArduPilot features. See [Firmware Limitations](https://ardupilot.org/copter/docs/common-limited-firmware.html) for details.
 
 ## Specifications
 
@@ -79,11 +79,11 @@ The SBUS pin, is passed by an inverter to RX2 (UART2 RX). UART2 is defaulted to 
 
 - DSM/SRXL connects to the RX2  pin, but SBUS would still be connected to SBUS.
 
-- FPort requires connection to TX2 and RX2 via a bi-directional inverter. See :ref:`common-FPort-receivers`.
+- FPort requires connection to TX2 and RX2 via a bi-directional inverter. See [FPort receivers](https://ardupilot.org/copter/docs/common-FPort-receivers.html).
 
 - CRSF/ELRS also requires a TX2 connection, in addition to RX2, and automatically provides telemetry.
 
-- SRXL2 requires a connection to TX2 and automatically provides telemetry.  Set :ref:`SERIAL6_OPTIONS<SERIAL6_OPTIONS>` to "4".
+- SRXL2 requires a connection to TX2 and automatically provides telemetry.  Set [SERIAL6_OPTIONS](https://ardupilot.org/copter/docs/parameters.html#serial6-options-serial6-options) to "4".
 
 > **Note:** the 5v pin above the SBUS pin is powered when USB is connected. All other 5V pins are only powered when battery is present.
 
@@ -112,7 +112,7 @@ An integrated BLE RF module is attached to UART1 and its power controlled by a p
 
 ## Loading Firmware
 
-Firmware for this board can be found `here <https://firmware.ardupilot.org>`__  in sub-folders labeled “ATOMRCF405NAVI-Deluxe”.
+Firmware for this board can be found [here](https://firmware.ardupilot.org) in sub-folders labeled “ATOMRCF405NAVI-Deluxe”.
 
 Initial firmware load can be done with DFU by plugging in USB with the
 boot button pressed. Then you should load the "with_bl.hex"
