@@ -212,18 +212,18 @@ void ModeTracking::update()
         }
 
         // ── Pitch PID ────────────────────────────────────────────────────────
-        // errory is pre-adjusted seeker-side. TRK_PITCH_OFFSET biases nav_pitch_cd
-        // directly so the plane holds a pitch offset when errory = 0.
+        // errory is from frame centre (raw, no seeker-side offset).
+        // TRK_PITCH_OFFSET is the setpoint: PID drives errory → pitch_offset so
+        // the plane holds the crosshair on target when errory == pitch_offset_norm.
         ey_raw = fabsf(_errory_rad) > deadband_rad ? _errory_rad : 0.0f;
         ey     = ey_raw;
         if (is_zero(ey_raw)) {
             plane.g2.tracking_pitch_pid.reset_I();
         }
-        const float pitch_offset_cd = plane.g2.tracking_pitch_offset.get() * 100.0f;
-        const float pitch_cd = plane.g2.tracking_pitch_pid.update_all(degrees(ey), 0.0f, dt_s)
-                               * ramp;
-        plane.nav_pitch_cd   = (int32_t)(-pitch_offset_cd) +
-                               constrain_int32((int32_t)pitch_cd,
+        const float pitch_offset_deg = plane.g2.tracking_pitch_offset.get();
+        const float pitch_cd = plane.g2.tracking_pitch_pid.update_all(
+                                   degrees(ey), pitch_offset_deg, dt_s) * ramp;
+        plane.nav_pitch_cd   = constrain_int32((int32_t)pitch_cd,
                                                (int32_t)(plane.pitch_limit_min * 100),
                                                plane.aparm.pitch_limit_max.get() * 100);
     }
