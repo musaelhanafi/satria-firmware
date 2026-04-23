@@ -13,6 +13,16 @@ EK3_ENABLE 0
 # Compass: enabled — SITL compass backend reads from SIMState
 COMPASS_USE 1
 
+# SIM_MAG1_OFS: simulated instrument bias for the SITL compass.
+# AP_Compass_SITL mirrors COMPASS_OFS → SIM_MAG1_OFS at runtime when
+# COMPASS_OFS is non-zero, so loading a real aircraft's param file is
+# automatically self-consistent (the two cancel in the field formula).
+# On a fresh boot with no stored COMPASS_OFS these values are pushed into
+# COMPASS_OFS so configured() sees non-zero offsets (compass is calibrated).
+SIM_MAG1_OFS_X  5
+SIM_MAG1_OFS_Y  13
+SIM_MAG1_OFS_Z -18
+
 # GPS: SITL GPS backend (type 100) — reads position/velocity from SIMState
 GPS1_TYPE 100
 
@@ -51,8 +61,12 @@ SERVO2_FUNCTION 80   # Vtail_right  (elevator - rudder)
 SERVO3_FUNCTION 70   # Throttle
 SERVO4_FUNCTION 79   # Vtail_left   (elevator + rudder)
 
-# MIXING_GAIN: scales vtail surface deflection (default 0.5)
-# Increase if vtail response feels sluggish; decrease if over-responsive.
+# MIXING_GAIN 0.5: each vtail surface gets half the pitch/yaw command, leaving
+# headroom for simultaneous pitch+yaw without saturating either surface.
+# xplane_vtail.json uses range=2.0 (=1/MIXING_GAIN) to compensate so that
+# X-Plane yoke_pitch/heading recover ±1.0 at full command.
+# Do NOT increase this to 1.0: at 100% elevator + 100% rudder, one vtail surface
+# would saturate and the other would be at zero — pitch/yaw authority degraded.
 MIXING_GAIN 0.5
 
 # ── RC input channel mapping ──────────────────────────────────────────────────
@@ -75,6 +89,16 @@ TKOFF_TDRAG_SPD1 0
 SIM_OH_MASK 255
 
 # ── X-Plane UDP bind port ────────────────────────────────────────────────────
+# X-Plane setup — Net Connections → Data, send DATA@ to 10.0.0.2:49005:
+#   Row 1   (times)           Row 3   (speed)         Row 4   (Gload)
+#   Row 13  (trim)            Row 16  (ang vel)        Row 17  (pitch/roll/hdg)
+#   Row 20  (lat/lon/alt)     Row 21  (local vel)
+#   Row 37  (engine RPM)      Row 38  (prop RPM)       Row 39  (prop pitch)
+#   Row 136 (joystick raw) — RC input source; required for rudder/CH4 to work.
+#     SIM_XPlane requests row 136 via DSEL automatically; X-Plane must be
+#     configured to send it (Net Connections → Data → row 136 checkbox).
+#     SIM_XPlane puts joystick axes into sitl->state.rcin[]; AP_RCProtocol_FDM
+#     forwards them as RC channels when no physical IOMCU receiver is active.
 SIM_XP_BIND_PORT 49005
 
 # ── SITL home position — Bandung WICC ────────────────────────────────────────

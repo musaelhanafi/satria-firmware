@@ -1,10 +1,3 @@
-<<<<<<< HEAD
-# x86-hil-vtail: SITL board for HIL with X-Plane on x86/laptop, V-tail airframe.
-# CH1=aileron, CH2=right ruddervator, CH3=throttle, CH4=left ruddervator.
-# ArduPlane mixes elevator+rudder into CH2/CH4 via VTAIL_OUTPUT before output.
-include ../sitl/hwdef.dat
-
-=======
 # x86-hil-vtail: SITL board for HIL with X-Plane on x86/laptop — V-tail airframe.
 # Inherits the base SITL HAL; builds natively on x86, no cross-compile needed.
 # V-tail layout: CH1=aileron, CH2=vtail_right, CH3=throttle, CH4=vtail_left.
@@ -24,5 +17,4 @@ include ../sitl/hwdef.dat
 include ../sitl/hwdef.dat
 
 # Use the V-tail DREF map instead of the default xplane_plane.json.
->>>>>>> 2c6da79070431b051a28730aec332856c92f632d
 define XPLANE_JSON "xplane_vtail.json"

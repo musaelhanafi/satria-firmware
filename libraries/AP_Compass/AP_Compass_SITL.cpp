@@ -27,10 +27,24 @@ AP_Compass_SITL::AP_Compass_SITL(uint8_t _sitl_instance) :
                 }
                 set_rotation(ROTATION_NONE);
 
-        // Scroll through the registered compasses, and set the offsets
-            if (_compass.get_offsets(instance).is_zero()) {
-                _compass.set_offsets(instance, _sitl->mag_ofs[sitl_instance]);
+        // Keep SITL compass formula self-consistent:
+        //   final_field = bodyMagField − SIM_MAG1_OFS + COMPASS_OFS
+        // When SIM_MAG1_OFS == COMPASS_OFS the two cancel → final_field = bodyMagField.
+        {
+            const Vector3f compass_ofs = _compass.get_offsets(instance);
+            auto &mag_ofs = _sitl->mag_ofs[sitl_instance];
+            if (compass_ofs.is_zero()) {
+                // Uncalibrated: push SIM_MAG1_OFS → COMPASS_OFS so the compass
+                // is seen as calibrated (configured() requires non-zero offsets).
+                _compass.set_offsets(instance, mag_ofs.get());
+            } else {
+                // COMPASS_OFS already set (e.g. loaded from a real aircraft's
+                // param file): mirror it into SIM_MAG1_OFS at runtime so they
+                // cancel regardless of what SIM_MAG1_OFS was stored as.
+                // Not saved — re-synced automatically on every boot.
+                mag_ofs.set(compass_ofs);
             }
+        }
 
         // we want to simulate a calibrated compass by default, so set
         // scale to 1

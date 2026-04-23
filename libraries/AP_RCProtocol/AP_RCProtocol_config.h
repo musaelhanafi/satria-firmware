@@ -97,5 +97,8 @@
 #endif
 
 #ifndef AP_RCPROTOCOL_FDM_ENABLED
-#define AP_RCPROTOCOL_FDM_ENABLED AP_RCPROTOCOL_BACKEND_DEFAULT_ENABLED && (CONFIG_HAL_BOARD == HAL_BOARD_SITL)
+// Also enabled for SITL-on-hardware (AP_SIM_ENABLED): SIM_XPlane populates
+// sitl->state.rcin[] from X-Plane JoystickRaw (row 136); FDM backend forwards
+// those values as RC input when no physical IOMCU receiver is active.
+#define AP_RCPROTOCOL_FDM_ENABLED AP_RCPROTOCOL_BACKEND_DEFAULT_ENABLED && (CONFIG_HAL_BOARD == HAL_BOARD_SITL || AP_SIM_ENABLED)
 #endif

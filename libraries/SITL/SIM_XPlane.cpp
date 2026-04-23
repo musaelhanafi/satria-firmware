@@ -135,6 +135,9 @@ XPlane::XPlane(const char *frame_str) :
     }
 
     socket_in.bind("0.0.0.0", bind_port);
+    // Connect socket_out now so select_data() can send DSEL before the first
+    // DATA packet arrives (xplane_ip is known from the frame string).
+    socket_out.connect(xplane_ip, xplane_port);
     printf("Waiting for XPlane data on UDP port %u and sending to port %u\n",
            (unsigned)bind_port, (unsigned)xplane_port);
 
@@ -871,8 +874,10 @@ void XPlane::update(const struct sitl_input &input)
             last_dref_ms = now_ms;
             send_drefs(input);
         }
-    } else if (connected) {
-        // Connected but no DATA yet — keep requesting data selection
+    } else {
+        // No DATA yet — keep requesting data rows from X-Plane via DSEL.
+        // select_data() uses socket_out which is connected in the constructor,
+        // so this works even before the first DATA packet (connected=false).
         select_data();
     }
 

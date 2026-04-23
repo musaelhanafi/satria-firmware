@@ -12,7 +12,7 @@ Channel mapping (standard RC layout):
   Axis 1            → CH2  Pitch / elevator    (centred, inverted)
   Axis 2            → CH3  Throttle            (full-range)
   Axis 3            → CH4  Yaw / rudder        (centred)
-  Button 6 or 7     → CH5  (2000 pressed, 1000 released)
+  Button 6 / 7      → CH5  3-pos: btn7=1000, btn6=1500, neither=2000
   Button 4, 5 or
   Axis 4/5 > 0.5    → CH6  (2000 active, 1000 released)
   Button 0          → CH7  (2000 pressed, 1000 released)
@@ -128,13 +128,10 @@ def read_channels(joy: "pygame.joystick.Joystick") -> list[int]:
     ch3 = _thr_pwm(joy.get_axis(2)) if n_ax > 2 else 1000   # throttle
     ch4 = ax(3)                           # yaw
 
-    # CH5: 3-position switch via two buttons
-    #   button 6 pressed → 1000 (low)
-    #   button 7 pressed → 2000 (high)
-    #   neither pressed  → 1500 (middle)
+    # CH5: 3-position switch — btn7=1000 (low), btn6=1500 (mid), neither=2000 (high).
     btn6 = 6 < n_btn and joy.get_button(6)
     btn7 = 7 < n_btn and joy.get_button(7)
-    ch5 = 1000 if btn6 else (2000 if btn7 else 1500)
+    ch5 = 1000 if btn7 else (1500 if btn6 else 2000)
 
     # CH6: button 4, 5, or axis 4/5 > 0.5 (triggers mapped as axes on many pads)
     btn46 = any(i < n_btn and joy.get_button(i) for i in (4, 5))
