@@ -727,6 +727,30 @@ void XPlane::send_drefs(const struct sitl_input &input)
 
     // Round-robin: start from where we left off last call and scan
     // the full list once, sending the FIRST DREF that needs an update.
+
+    // Per-channel PWM → normalised value helpers.
+    // Uses SERVO{n}_TRIM as centre and SERVO{n}_MIN/MAX as endpoints so that
+    // non-standard trims and asymmetric throws are handled correctly.
+    // Falls back to 1000/1500/2000 if SRV_Channels isn't available yet.
+    auto servo_trim = [](uint8_t ch_idx) -> float {
+        const SRV_Channel *ch = SRV_Channels::srv_channel(ch_idx - 1);
+        return ch ? (float)ch->get_trim() : 1500.0f;
+    };
+    // Half-range toward maximum (positive side).
+    auto servo_half_up = [](uint8_t ch_idx) -> float {
+        const SRV_Channel *ch = SRV_Channels::srv_channel(ch_idx - 1);
+        if (!ch) return 500.0f;
+        const float h = (float)ch->get_output_max() - (float)ch->get_trim();
+        return h > 1.0f ? h : 500.0f;
+    };
+    // Half-range toward minimum (negative side).
+    auto servo_half_dn = [](uint8_t ch_idx) -> float {
+        const SRV_Channel *ch = SRV_Channels::srv_channel(ch_idx - 1);
+        if (!ch) return 500.0f;
+        const float h = (float)ch->get_trim() - (float)ch->get_output_min();
+        return h > 1.0f ? h : 500.0f;
+    };
+
     if (dref_cursor == nullptr) {
         dref_cursor = drefs;
     }
@@ -744,54 +768,70 @@ void XPlane::send_drefs(const struct sitl_input &input)
 
         float v;
         switch (d->type) {
-        case DRefType::ANGLE:
-            v = d->range * (input.servos[d->channel-1]-1500)/500.0;
+        case DRefType::ANGLE: {
+            const float pwm  = input.servos[d->channel-1];
+            const float trim = servo_trim(d->channel);
+            const float half = (pwm >= trim) ? servo_half_up(d->channel)
+                                             : servo_half_dn(d->channel);
+            v = d->range * (pwm - trim) / half;
             v = constrain_float(v, -d->range, d->range);
             break;
-        case DRefType::RANGE:
+        }
+        case DRefType::RANGE: {
+            const SRV_Channel *ch = SRV_Channels::srv_channel(d->channel - 1);
+            const float mn  = ch ? (float)ch->get_output_min() : 1000.0f;
+            const float mx  = ch ? (float)ch->get_output_max() : 2000.0f;
+            const float span = mx - mn;
             if (!hal.util->get_soft_armed()) {
                 v = 0.0f;
             } else {
-                v = d->range * (input.servos[d->channel-1]-1000)/1000.0;
+                v = d->range * (input.servos[d->channel-1] - mn) / span;
                 v = constrain_float(v, 0.0f, d->range);
             }
             break;
+        }
         case DRefType::FIXED:
             continue;   // handled by priority pass above; skip in round-robin
         case DRefType::ELEVON_AILERON: {
-            // roll = (ch1 - ch2) / 1000
-            const float ch1 = input.servos[d->channel-1];
-            const float ch2 = input.servos[d->channel2-1];
-            v = d->range * (ch1 - ch2) / 1000.0f;
+            // roll = (ch1 - ch2) / (half_up_ch1 + half_up_ch2)
+            const float ch1  = input.servos[d->channel-1];
+            const float ch2  = input.servos[d->channel2-1];
+            const float denom = servo_half_up(d->channel) + servo_half_up(d->channel2);
+            v = d->range * (ch1 - ch2) / denom;
             v = constrain_float(v, -d->range, d->range);
             break;
         }
         case DRefType::ELEVON_ELEVATOR: {
-            // pitch = (ch1 + ch2 - 3000) / 1000
-            const float ch1 = input.servos[d->channel-1];
-            const float ch2 = input.servos[d->channel2-1];
-            v = -d->range * (ch1 + ch2 - 3000.0f) / 1000.0f;
+            // pitch = -((ch1 + ch2) - (trim1 + trim2)) / (half_up_ch1 + half_up_ch2)
+            const float ch1   = input.servos[d->channel-1];
+            const float ch2   = input.servos[d->channel2-1];
+            const float sum_trim  = servo_trim(d->channel) + servo_trim(d->channel2);
+            const float denom     = servo_half_up(d->channel) + servo_half_up(d->channel2);
+            v = -d->range * (ch1 + ch2 - sum_trim) / denom;
             v = constrain_float(v, -d->range, d->range);
             break;
         }
         case DRefType::VTAIL_ELEVATOR: {
-            // Demix vtail → elevator: pitch = -(vtail_right + vtail_left - 3000) / 1000
+            // Demix vtail → elevator: -(vtail_right + vtail_left - (trim2 + trim4)) / half_sum
             // channel = vtail_right (CH2), channel2 = vtail_left (CH4)
             // ArduPlane mixer: vtail_right=(elev-rud)*gain, vtail_left=(elev+rud)*gain
-            // Sum cancels rudder: vtail_right+vtail_left = 2*elev*gain → pitch ∝ (ch1+ch2-3000)
-            const float ch1 = input.servos[d->channel-1];
-            const float ch2 = input.servos[d->channel2-1];
-            v = -d->range * (ch1 + ch2 - 3000.0f) / 1000.0f;
+            // Sum cancels rudder: vtail_right+vtail_left = 2*elev*gain → pitch ∝ (ch1+ch2-sum_trim)
+            const float ch1       = input.servos[d->channel-1];
+            const float ch2       = input.servos[d->channel2-1];
+            const float sum_trim  = servo_trim(d->channel) + servo_trim(d->channel2);
+            const float denom     = servo_half_up(d->channel) + servo_half_up(d->channel2);
+            v = -d->range * (ch1 + ch2 - sum_trim) / denom;
             v = constrain_float(v, -d->range, d->range);
             break;
         }
         case DRefType::VTAIL_RUDDER: {
-            // Demix vtail → rudder: heading = (vtail_left - vtail_right) / 1000
+            // Demix vtail → rudder: (vtail_left - vtail_right) / half_sum
             // channel = vtail_right (CH2), channel2 = vtail_left (CH4)
             // Difference cancels elevator: vtail_left-vtail_right = 2*rud*gain → heading ∝ (ch2-ch1)
-            const float ch1 = input.servos[d->channel-1];
-            const float ch2 = input.servos[d->channel2-1];
-            v = d->range * (ch2 - ch1) / 1000.0f;
+            const float ch1   = input.servos[d->channel-1];
+            const float ch2   = input.servos[d->channel2-1];
+            const float denom = servo_half_up(d->channel) + servo_half_up(d->channel2);
+            v = d->range * (ch2 - ch1) / denom;
             v = constrain_float(v, -d->range, d->range);
             break;
         }
