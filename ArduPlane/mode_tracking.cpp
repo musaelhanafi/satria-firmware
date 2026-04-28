@@ -15,8 +15,7 @@
     Deadband zeros the error inside ±TRK_DEADBAND_DEG; active roll-rate
     damping holds wings level while in deadband.
 
-  Throttle: Kalman filter on pitch attitude error + PID, with a linear
-    settle ramp over TRK_SETTLE_S seconds from mode entry.
+  Throttle: pitch attitude error fed directly to PID with settle ramp.
 
   Terminal: activates when (current_alt_msl - TRK_TGT_ALT) <= TRK_TERM_ALT.
 */
@@ -32,15 +31,6 @@ bool ModeTracking::_enter()
     _lock_stable_ms = AP_HAL::millis();
     _cruise_throttle    = plane.aparm.throttle_cruise.get();
     _terminal_entry_ms  = 0;
-
-    // Throttle KF — seed at current pitch error so throttle starts smoothly.
-    _kf_x[0]        = 0.0f;
-    _kf_x[1]        = 0.0f;
-    _kf_P[0]        = 1.0f;
-    _kf_P[1]        = 0.0f;
-    _kf_P[2]        = 0.0f;
-    _kf_P[3]        = 1.0f;
-    _kf_initialized     = false;
 
     _close_enough_prev  = false;
     _last_dist_log_ms   = 0;
@@ -174,54 +164,16 @@ void ModeTracking::update()
 
     plane.update_load_factor();
 
-    // ── Throttle (Kalman filter on pitch error) ───────────────────────────────
-    // State: x = [pitch_err (rad), pitch_err_rate (rad/s)]
-    // Model: constant-velocity  F = [[1,dt],[0,1]]
-    // Observation: z = pitch_err,  H = [1,0]
-    // Process noise Q = diag(1e-4, TRK_KF_Q);  Measurement noise R = TRK_KF_R
-    // Throttle input: x[0] + x[1]*TRK_THR_LEAD  (Kalman-predicted pitch error)
+    // ── Throttle ──────────────────────────────────────────────────────────────
     {
         const float cruise        = plane.aparm.throttle_cruise.get();
-        const float lead_s        = plane.g2.tracking_throt_lead.get();
-        const float q_vel         = plane.g2.tracking_kf_q.get();
-        const float r_meas        = MAX(plane.g2.tracking_kf_r.get(), 1e-6f);
         const float nav_pitch_rad = plane.nav_pitch_cd * 0.01f * (M_PI / 180.0f);
-        const float pitch_err     = nav_pitch_rad - ahrs.get_pitch() ;
-
-        if (!_kf_initialized) {
-            _kf_x[0]        = pitch_err;
-            _kf_x[1]        = 0.0f;
-            _kf_P[0]        = 1.0f;
-            _kf_P[1]        = 0.0f;
-            _kf_P[2]        = 0.0f;
-            _kf_P[3]        = 1.0f;
-            _kf_initialized = true;
-        } else {
-            // Predict
-            const float px0  = _kf_x[0] + _kf_x[1] * dt_s;
-            const float px1  = _kf_x[1];
-            const float pp00 = _kf_P[0] + dt_s * (_kf_P[2] + _kf_P[1]) + dt_s * dt_s * _kf_P[3] + 1e-4f;
-            const float pp01 = _kf_P[1] + dt_s * _kf_P[3];
-            const float pp10 = _kf_P[2] + dt_s * _kf_P[3];
-            const float pp11 = _kf_P[3] + q_vel;
-            // Update
-            const float innov = pitch_err - px0;
-            const float S_inv = 1.0f / (pp00 + r_meas);
-            const float K0    = pp00 * S_inv;
-            const float K1    = pp10 * S_inv;
-            _kf_x[0] = px0 + K0 * innov;
-            _kf_x[1] = px1 + K1 * innov;
-            _kf_P[0] = (1.0f - K0) * pp00;
-            _kf_P[1] = (1.0f - K0) * pp01;
-            _kf_P[2] = pp10 - K1 * pp00;
-            _kf_P[3] = pp11 - K1 * pp01;
-        }
-
-        const float pitch_err_pred = _kf_x[0] + _kf_x[1] * lead_s;
-        const float pid_out        = plane.g2.tracking_throt_pid.update_all(
-                                         pitch_err_pred, 0.0f, dt_s) * ramp;
-
-        const float throttle = constrain_float(cruise + pid_out, 4.0*cruise / 5.0f, 7.0*cruise/5.0f);
+        const float pitch_err     = nav_pitch_rad - ahrs.get_pitch();
+        const float pid_out       = plane.g2.tracking_throt_pid.update_all(
+                                        pitch_err, 0.0f, dt_s) * ramp;
+        const float throttle = constrain_float(cruise + pid_out,
+                                               4.0f * cruise / 5.0f,
+                                               7.0f * cruise / 5.0f);
         SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, throttle);
     }
 
