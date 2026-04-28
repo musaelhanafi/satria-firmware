@@ -107,8 +107,6 @@ void ModeTracking::update()
         (int32_t)(plane.g2.tracking_target_lon.get() * 1.0e7f),
         0, Location::AltFrame::ABSOLUTE);
     const float horiz_dist_m = plane.current_loc.get_distance(target_loc);
-    const float close_m      = plane.g2.tracking_close_m.get();
-    const bool  close_enough = (close_m > 0.0f) && (horiz_dist_m <= close_m);
 
   
     // errorx > 0 → target right → roll right (positive bank).
