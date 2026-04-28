@@ -1416,6 +1416,22 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @User: Standard
     AP_GROUPINFO("TRK_CLOSE_M", 61, ParametersG2, tracking_close_m, 1000.0f),
 
+    // @Param: TRK_KFXY_Q
+    // @DisplayName: Roll/pitch error KF process noise
+    // @Description: Process noise variance for the error-rate state in the roll and pitch Kalman filters. Larger values make the filters track faster but pass more noise.
+    // @Range: 0.001 10.0
+    // @Increment: 0.01
+    // @User: Advanced
+    AP_GROUPINFO("TRK_KFXY_Q", 62, ParametersG2, tracking_kfxy_q, 0.1f),
+
+    // @Param: TRK_KFXY_R
+    // @DisplayName: Roll/pitch error KF measurement noise
+    // @Description: Measurement noise variance for the roll and pitch error Kalman filters. Also controls settle ramp speed: larger R means slower convergence from zero on re-acquisition (longer effective ramp).
+    // @Range: 0.0001 1.0
+    // @Increment: 0.001
+    // @User: Advanced
+    AP_GROUPINFO("TRK_KFXY_R", 63, ParametersG2, tracking_kfxy_r, 0.01f),
+
     AP_GROUPEND
 };
 

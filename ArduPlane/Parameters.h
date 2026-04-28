@@ -600,6 +600,8 @@ public:
     AP_Float tracking_throt_lead;    // TRK_THR_LEAD:    Kalman prediction horizon (s)
     AP_Float tracking_kf_q;          // TRK_KF_Q:        Kalman process noise for pitch rate (rad^2/s^3)
     AP_Float tracking_kf_r;          // TRK_KF_R:        Kalman measurement noise for pitch error (rad^2)
+    AP_Float tracking_kfxy_q;        // TRK_KFXY_Q:      process noise for roll/pitch error-rate KF (rad^2/s^3)
+    AP_Float tracking_kfxy_r;        // TRK_KFXY_R:      measurement noise for roll/pitch error KF (rad^2); controls settle ramp speed
     // Throttle defaults: P=10 %/rad, I=2, D=0, imax=50 %
     AC_PID tracking_throt_pid{10.0f, 2.0f, 0.0f, 0.0f, 50.0f, 0.0f, 0.0f, 20.0f, 0.0f};
 

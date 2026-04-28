@@ -1091,6 +1091,7 @@ public:
     const char *name4()  const override { return "TRAK"; }
 
     void update() override;
+    void run() override;
 
     bool does_auto_navigation() const override { return true; }
 
@@ -1106,15 +1107,19 @@ private:
 
     float    _errorx_rad;         // horizontal tracking error (+ = right)
     float    _errory_rad;         // vertical tracking error   (+ = above)
-    uint32_t _last_msg_ms;        // timestamp of last TRACKING message
     uint32_t _prev_update_ms;     // for dt computation in update()
-    bool     _was_timed_out;      // edge-detect for active → timed-out transition
-    uint32_t _lock_stable_ms;     // timestamp when stable lock was first achieved after entry/re-acq
+    uint32_t _lock_stable_ms;     // timestamp of mode entry, used for throttle settle ramp
     float    _cruise_throttle;    // throttle to use in TRACKING mode (can be set via MAVLink)
     uint32_t _terminal_entry_ms;  // timestamp when terminal phase was first entered (0 = not yet)
-    float    _kf_x[2];            // Kalman state: [pitch_err (rad), pitch_err_rate (rad/s)]
-    float    _kf_P[4];            // 2x2 covariance row-major: [P00, P01, P10, P11]
+    float    _kf_x[2];            // Throttle KF state: [pitch_err (rad), pitch_err_rate (rad/s)]
+    float    _kf_P[4];            // Throttle KF covariance row-major: [P00, P01, P10, P11]
     bool     _kf_initialized;     // true after first measurement has been processed
+    float    _kf_roll_x[2];       // Roll KF state: [errorx_rad, errorx_rate (rad/s)]
+    float    _kf_roll_P[4];       // Roll KF covariance row-major
+    bool     _kf_roll_init;       // true after roll KF has been seeded
+    float    _kf_pitch_x[2];      // Pitch KF state: [errory_rad, errory_rate (rad/s)]
+    float    _kf_pitch_P[4];      // Pitch KF covariance row-major
+    bool     _kf_pitch_init;      // true after pitch KF has been seeded
     bool     _close_enough_prev;  // previous close_enough state for edge detection
     uint32_t _last_dist_log_ms;   // timestamp of last distance printf (rate-limited to ~1 Hz)
 };

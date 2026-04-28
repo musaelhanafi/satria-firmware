@@ -27,8 +27,8 @@
 
     # vtail demix: channel=vtail_right (CH2), channel2=vtail_left (CH4)
     # range=2.0 = 1/MIXING_GAIN compensates for MIXING_GAIN 0.5 in defaults.parm
-    "sim/joystick/yoke_pitch_ratio"   : { "type" : "vtail_elevator", "range" : 2.0, "channel" : 2, "channel2" : 4 },
-    "sim/joystick/yoke_heading_ratio" : { "type" : "vtail_rudder",   "range" : 2.0, "channel" : 2, "channel2" : 4 },
+    "sim/joystick/yoke_pitch_ratio"   : { "type" : "vtail_elevator", "range" : 1.0, "channel" : 2, "channel2" : 4 },
+    "sim/joystick/yoke_heading_ratio" : { "type" : "vtail_rudder",   "range" : 1.0, "channel" : 2, "channel2" : 4 },
 
     # throttle on CH3
     "sim/flightmodel/engine/ENGN_thro_use[0]" : { "type" : "range", "range" : 1, "channel" : 3 }
