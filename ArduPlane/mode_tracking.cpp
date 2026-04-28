@@ -11,13 +11,9 @@
   errorx/errory arrive normalised in [-1, 1] and are converted to
   radians by GCS_MAVLink_Plane before being passed here.
 
-  Roll / pitch: 2-state Kalman filters (error, error-rate) run every
-    cycle and feed the roll and pitch PIDs.  The KFs start at x=[0,0]
-    with zero covariance on mode entry; process noise Q drives the
-    covariance away from zero so the Kalman gain rises gradually and
-    the filtered error converges from zero over ~1-2 s (tune TRK_KFXY_R).
-    There is no timeout fallback — the filters run continuously and the
-    last received error is held when no new message arrives.
+  Roll / pitch: raw error fed directly to PID with settle ramp.
+    Deadband zeros the error inside ±TRK_DEADBAND_DEG; active roll-rate
+    damping holds wings level while in deadband.
 
   Throttle: Kalman filter on pitch attitude error + PID, with a linear
     settle ramp over TRK_SETTLE_S seconds from mode entry.
@@ -45,17 +41,6 @@ bool ModeTracking::_enter()
     _kf_P[2]        = 0.0f;
     _kf_P[3]        = 1.0f;
     _kf_initialized     = false;
-
-    // Roll / pitch error KFs — seeded at zero with zero covariance so the
-    // Kalman gain rises gradually and provides a natural settle ramp.
-    _kf_roll_x[0]  = 0.0f; _kf_roll_x[1]  = 0.0f;
-    _kf_roll_P[0]  = 0.0f; _kf_roll_P[1]  = 0.0f;
-    _kf_roll_P[2]  = 0.0f; _kf_roll_P[3]  = 0.0f;
-    _kf_roll_init  = false;
-    _kf_pitch_x[0] = 0.0f; _kf_pitch_x[1] = 0.0f;
-    _kf_pitch_P[0] = 0.0f; _kf_pitch_P[1] = 0.0f;
-    _kf_pitch_P[2] = 0.0f; _kf_pitch_P[3] = 0.0f;
-    _kf_pitch_init = false;
 
     _close_enough_prev  = false;
     _last_dist_log_ms   = 0;
@@ -102,49 +87,8 @@ void ModeTracking::handle_tracking_error(float errorx_rad, float errory_rad)
 {
     _errorx_rad = errorx_rad;
     _errory_rad = errory_rad;
-    ::printf("TRK ex=%.4f ey=%.4f deg (ex=%.2f ey=%.2f)\n",
-             errorx_rad, errory_rad,
-             degrees(errorx_rad), degrees(errory_rad));
 }
 
-
-// ── _kf2_update ───────────────────────────────────────────────────────────────
-// 2-state Kalman filter step shared by the roll and pitch error KFs.
-// State: x = [pos, rate]  Model: F = [[1,dt],[0,1]]
-// Observation: z mapped to pos, H = [1,0]
-// Q = diag(1e-4, q_vel),  R = r_meas
-// On first call (_init == false) the state is seeded at [0,0] with P=0.
-// Process noise then drives P away from zero so the Kalman gain rises
-// gradually — this provides a natural ramp from zero to the true measurement.
-static void _kf2_update(bool &init, float x[2], float P[4],
-                        float z, float dt_s, float q_vel, float r_meas)
-{
-    if (!init) {
-        x[0] = 0.0f; x[1] = 0.0f;
-        P[0] = 0.0f; P[1] = 0.0f;
-        P[2] = 0.0f; P[3] = 0.0f;
-        init = true;
-        return;
-    }
-    // Predict
-    const float px0  = x[0] + x[1] * dt_s;
-    const float px1  = x[1];
-    const float pp00 = P[0] + dt_s * (P[2] + P[1]) + dt_s * dt_s * P[3] + 1e-4f;
-    const float pp01 = P[1] + dt_s * P[3];
-    const float pp10 = P[2] + dt_s * P[3];
-    const float pp11 = P[3] + q_vel;
-    // Update
-    const float innov = z - px0;
-    const float S_inv = 1.0f / (pp00 + r_meas);
-    const float K0    = pp00 * S_inv;
-    const float K1    = pp10 * S_inv;
-    x[0] = px0 + K0 * innov;
-    x[1] = px1 + K1 * innov;
-    P[0] = (1.0f - K0) * pp00;
-    P[1] = (1.0f - K0) * pp01;
-    P[2] = pp10 - K1 * pp00;
-    P[3] = pp11 - K1 * pp01;
-}
 
 
 // ── update ────────────────────────────────────────────────────────────────────
@@ -166,41 +110,36 @@ void ModeTracking::update()
     const float close_m      = plane.g2.tracking_close_m.get();
     const bool  close_enough = (close_m > 0.0f) && (horiz_dist_m <= close_m);
 
-    if (close_enough != _close_enough_prev) {
-        gcs().send_text(close_enough ? MAV_SEVERITY_WARNING : MAV_SEVERITY_INFO,
-                        "Tracking: %.0fm %s TRK_CLOSE_M (%.0fm)",
-                        (double)horiz_dist_m,
-                        close_enough ? "<=" : ">",
-                        (double)close_m);
-        _close_enough_prev = close_enough;
-    }
+  
+    // errorx > 0 → target right → roll right (positive bank).
+    const float ex_raw = fabsf(_errorx_rad) > deadband_rad ? _errorx_rad : 0.0f;
+    const float ey_raw = fabsf(_errory_rad) > deadband_rad ? _errory_rad : 0.0f;
 
     if (now_ms - _last_dist_log_ms >= 1000U) {
         _last_dist_log_ms = now_ms;
-        ::printf("TRK dist=%.1fm close=%d alt=%.1fm\n",
-                 (double)horiz_dist_m, (int)close_enough,
-                 (double)(plane.current_loc.alt * 0.01f));
+        const float nav_pitch_rad_log = plane.nav_pitch_cd * 0.01f * (M_PI / 180.0f);
+        const float alt_rel_m = plane.current_loc.alt * 0.01f
+                              - plane.g2.tracking_target_alt_msl.get();
+        gcs().send_text(MAV_SEVERITY_INFO,
+                        "TRK d=%.0fm alt=%.0fm ex=%.2f ey=%.2f",
+                        (double)horiz_dist_m, (double)alt_rel_m,
+                        (double)ex_raw, (double)ey_raw);
+        gcs().send_text(MAV_SEVERITY_INFO,
+                        "TRK p_ahrs=%.1f nav=%.1f err=%.1f",
+                        (double)degrees(ahrs.get_pitch()),
+                        (double)degrees(nav_pitch_rad_log),
+                        (double)degrees(nav_pitch_rad_log - ahrs.get_pitch()));
     }
 
-    // Throttle settle ramp — linear from 0 to 1 over TRK_SETTLE_S seconds
-    // after mode entry.  Roll/pitch use the KF for their own natural ramp.
+    // Settle ramp — linear 0→1 over TRK_SETTLE_S seconds from mode entry.
+    // Applied to roll, pitch, and throttle PID outputs so all axes come up
+    // smoothly together instead of snapping to full authority on entry.
     const float settle_s = plane.g2.tracking_settle_s.get();
     const float elapsed  = constrain_float((now_ms - _lock_stable_ms) * 1e-3f,
                                            0.0f, settle_s);
     const float ramp     = (settle_s > 0.0f) ? (elapsed / settle_s) : 1.0f;
 
-    const float kfxy_q = plane.g2.tracking_kfxy_q.get();
-    const float kfxy_r = MAX(plane.g2.tracking_kfxy_r.get(), 1e-6f);
-
-    // ── Roll KF + PID ─────────────────────────────────────────────────────────
-    // errorx > 0 → target right → roll right (positive bank).
-    // KF runs every cycle; measurement = 0 inside deadband so state decays
-    // toward zero while wings are level.
-    const float ex_raw = fabsf(_errorx_rad) > deadband_rad ? _errorx_rad : 0.0f;
-
-    _kf2_update(_kf_roll_init, _kf_roll_x, _kf_roll_P,
-                ex_raw, dt_s, kfxy_q, kfxy_r);
-
+    // ── Roll PID ──────────────────────────────────────────────────────────────
     if (is_zero(ex_raw)) {
         plane.g2.tracking_roll_pid.reset_I();
         // Active damping: oppose roll rate to hold wings level.
@@ -211,28 +150,29 @@ void ModeTracking::update()
                                              plane.roll_limit_cd);
     } else {
         const float roll_cd = plane.g2.tracking_roll_pid.update_all(
-                                  degrees(_kf_roll_x[0]), 0.0f, dt_s);
+                                  degrees(ex_raw), 0.0f, dt_s) * ramp;
         plane.nav_roll_cd   = constrain_int32((int32_t)roll_cd,
                                               -plane.roll_limit_cd,
                                                plane.roll_limit_cd);
     }
 
-    // ── Pitch KF + PID ────────────────────────────────────────────────────────
-    // TRK_PITCH_OFFSET is the setpoint: PID drives errory → pitch_offset.
-    const float ey_raw = fabsf(_errory_rad) > deadband_rad ? _errory_rad : 0.0f;
-
-    _kf2_update(_kf_pitch_init, _kf_pitch_x, _kf_pitch_P,
-                ey_raw, dt_s, kfxy_q, kfxy_r);
-
+    // ── Pitch PID ─────────────────────────────────────────────────────────────
+    // Sign convention (this build): nav_pitch_cd positive = nose DOWN.
+    //   -pitch_offset_deg * 100  →  negative nav_pitch_cd (mounting camera downwards so need to pitch up to look at target on ground)
+    //   ey_raw < 0 (below) → need nose down → positive PID input so correction < 0
+    // When ey = 0 (deadband): correction = 0, plane holds -pitch_offset setpoint.
+    const float pitch_offset_deg = plane.g2.tracking_pitch_offset.get();
+    float pitch_correction_cd = 0.0f;
     if (is_zero(ey_raw)) {
         plane.g2.tracking_pitch_pid.reset_I();
+    } else {
+        pitch_correction_cd = plane.g2.tracking_pitch_pid.update_all(
+                                  degrees(ey_raw), pitch_offset_deg, dt_s) * ramp;
     }
-    const float pitch_offset_deg = plane.g2.tracking_pitch_offset.get();
-    const float pitch_cd = plane.g2.tracking_pitch_pid.update_all(
-                               degrees(_kf_pitch_x[0]), pitch_offset_deg, dt_s);
-    plane.nav_pitch_cd   = constrain_int32((int32_t)pitch_cd,
-                                           (int32_t)(plane.pitch_limit_min * 100),
-                                           plane.aparm.pitch_limit_max.get() * 100);
+    plane.nav_pitch_cd = constrain_int32(
+                             (int32_t)pitch_correction_cd,
+                             (int32_t)(plane.pitch_limit_min * 100),
+                             plane.aparm.pitch_limit_max.get() * 100);
 
     plane.update_load_factor();
 
@@ -248,7 +188,7 @@ void ModeTracking::update()
         const float q_vel         = plane.g2.tracking_kf_q.get();
         const float r_meas        = MAX(plane.g2.tracking_kf_r.get(), 1e-6f);
         const float nav_pitch_rad = plane.nav_pitch_cd * 0.01f * (M_PI / 180.0f);
-        const float pitch_err     = ahrs.get_pitch() - nav_pitch_rad;
+        const float pitch_err     = nav_pitch_rad - ahrs.get_pitch() ;
 
         if (!_kf_initialized) {
             _kf_x[0]        = pitch_err;
@@ -283,7 +223,7 @@ void ModeTracking::update()
         const float pid_out        = plane.g2.tracking_throt_pid.update_all(
                                          pitch_err_pred, 0.0f, dt_s) * ramp;
 
-        const float throttle = constrain_float(cruise + pid_out, cruise / 2.0f, cruise);
+        const float throttle = constrain_float(cruise + pid_out, 4.0*cruise / 5.0f, 7.0*cruise/5.0f);
         SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, throttle);
     }
 
