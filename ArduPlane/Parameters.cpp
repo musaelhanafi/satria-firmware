@@ -1382,31 +1382,6 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @User: Standard
     AP_GROUPINFO("TRK_TGT_LON", 57, ParametersG2, tracking_target_lon, 107.566559898f),
 
-    // @Param: TRK_THR_LEAD
-    // @DisplayName: Kalman prediction horizon
-    // @Description: Look-ahead time (s) for the Kalman-filtered pitch error used by the throttle PID.
-    // @Units: s
-    // @Range: 0 0.5
-    // @Increment: 0.05
-    // @User: Advanced
-    AP_GROUPINFO("TRK_THR_LEAD", 58, ParametersG2, tracking_throt_lead, 0.1f),
-
-    // @Param: TRK_KF_Q
-    // @DisplayName: Kalman process noise (pitch rate)
-    // @Description: Process noise variance for the pitch-error rate state in the throttle Kalman filter.
-    // @Range: 0.001 10.0
-    // @Increment: 0.01
-    // @User: Advanced
-    AP_GROUPINFO("TRK_KF_Q", 59, ParametersG2, tracking_kf_q, 0.1f),
-
-    // @Param: TRK_KF_R
-    // @DisplayName: Kalman measurement noise (pitch error)
-    // @Description: Measurement noise variance for the observed pitch error fed into the throttle Kalman filter.
-    // @Range: 0.0001 1.0
-    // @Increment: 0.001
-    // @User: Advanced
-    AP_GROUPINFO("TRK_KF_R", 60, ParametersG2, tracking_kf_r, 0.01f),
-
     // @Param: TRK_CLOSE_M
     // @DisplayName: Tracking close radius
     // @Description: Horizontal distance (m) within which the target is considered close. A GCS alert is sent when the drone crosses this threshold. 0 disables.
@@ -1415,22 +1390,6 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @Increment: 10
     // @User: Standard
     AP_GROUPINFO("TRK_CLOSE_M", 61, ParametersG2, tracking_close_m, 1000.0f),
-
-    // @Param: TRK_KFXY_Q
-    // @DisplayName: Roll/pitch error KF process noise
-    // @Description: Process noise variance for the error-rate state in the roll and pitch Kalman filters. Larger values make the filters track faster but pass more noise.
-    // @Range: 0.001 10.0
-    // @Increment: 0.01
-    // @User: Advanced
-    AP_GROUPINFO("TRK_KFXY_Q", 62, ParametersG2, tracking_kfxy_q, 0.1f),
-
-    // @Param: TRK_KFXY_R
-    // @DisplayName: Roll/pitch error KF measurement noise
-    // @Description: Measurement noise variance for the roll and pitch error Kalman filters. Also controls settle ramp speed: larger R means slower convergence from zero on re-acquisition (longer effective ramp).
-    // @Range: 0.0001 1.0
-    // @Increment: 0.001
-    // @User: Advanced
-    AP_GROUPINFO("TRK_KFXY_R", 63, ParametersG2, tracking_kfxy_r, 0.01f),
 
     AP_GROUPEND
 };

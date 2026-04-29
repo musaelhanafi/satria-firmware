@@ -172,7 +172,7 @@ void ModeTracking::update()
         const float pid_out       = plane.g2.tracking_throt_pid.update_all(
                                         pitch_err, 0.0f, dt_s) * ramp;
         const float throttle = constrain_float(cruise + pid_out,
-                                               4.0f * cruise / 5.0f,
+                                               3.0f * cruise / 4.0f,
                                                7.0f * cruise / 5.0f);
         SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, throttle);
     }
