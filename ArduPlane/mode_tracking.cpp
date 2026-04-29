@@ -155,10 +155,10 @@ void ModeTracking::update()
         plane.g2.tracking_pitch_pid.reset_I();
     } else {
         pitch_correction_cd = plane.g2.tracking_pitch_pid.update_all(
-                                  degrees(ey_raw), pitch_offset_deg, dt_s) * ramp;
+                                  degrees(ey_raw), 0, dt_s) * ramp;
     }
     plane.nav_pitch_cd = constrain_int32(
-                             (int32_t)pitch_correction_cd,
+                             (int32_t)(pitch_correction_cd-pitch_offset_deg * 100),
                              (int32_t)(plane.pitch_limit_min * 100),
                              plane.aparm.pitch_limit_max.get() * 100);
 
