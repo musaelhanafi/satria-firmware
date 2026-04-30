@@ -145,20 +145,20 @@ void ModeTracking::update()
     }
 
     // ── Pitch PID ─────────────────────────────────────────────────────────────
-    // Sign convention (this build): nav_pitch_cd positive = nose DOWN.
-    //   -pitch_offset_deg * 100  →  negative nav_pitch_cd (mounting camera downwards so need to pitch up to look at target on ground)
-    //   ey_raw < 0 (below) → need nose down → positive PID input so correction < 0
-    // When ey = 0 (deadband): correction = 0, plane holds -pitch_offset setpoint.
-    const float pitch_offset_deg = plane.g2.tracking_pitch_offset.get();
+    //   ey_raw < 0 (target below centre) → PID adds nose-down correction.
+    //   ey_raw > 0 (target above centre) → PID reduces dive angle.
     float pitch_correction_cd = 0.0f;
     if (is_zero(ey_raw)) {
         plane.g2.tracking_pitch_pid.reset_I();
     } else {
         pitch_correction_cd = plane.g2.tracking_pitch_pid.update_all(
-                                  degrees(ey_raw), 0, dt_s) * ramp;
+                                  degrees(ey_raw), 0, dt_s)*ramp;
     }
+    // Ramp applied to the full expression (offset + correction together) so
+    // nav_pitch starts at 0 on mode entry and grows smoothly — prevents the
+    // offset from snapping to full authority before the seeker can respond.
     plane.nav_pitch_cd = constrain_int32(
-                             (int32_t)(pitch_correction_cd-pitch_offset_deg * 100),
+                             (int32_t)(pitch_correction_cd),
                              (int32_t)(plane.pitch_limit_min * 100),
                              plane.aparm.pitch_limit_max.get() * 100);
 
