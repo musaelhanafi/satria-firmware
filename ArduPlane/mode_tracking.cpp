@@ -100,24 +100,10 @@ void ModeTracking::update()
 
   
     // errorx > 0 → target right → roll right (positive bank).
+    const float pitch_offset_rad = plane.g2.tracking_pitch_offset.get() * (M_PI / 180.0f);
     const float ex_raw = fabsf(_errorx_rad) > deadband_rad ? _errorx_rad : 0.0f;
-    const float ey_raw = fabsf(_errory_rad) > deadband_rad ? _errory_rad : 0.0f;
+    const float ey_raw = fabsf(_errory_rad) > deadband_rad ? _errory_rad : -pitch_offset_rad;
 
-    if (now_ms - _last_dist_log_ms >= 1000U) {
-        _last_dist_log_ms = now_ms;
-        const float nav_pitch_rad_log = plane.nav_pitch_cd * 0.01f * (M_PI / 180.0f);
-        const float alt_rel_m = plane.current_loc.alt * 0.01f
-                              - plane.g2.tracking_target_alt_msl.get();
-        gcs().send_text(MAV_SEVERITY_INFO,
-                        "TRK d=%.0fm alt=%.0fm ex=%.2f ey=%.2f",
-                        (double)horiz_dist_m, (double)alt_rel_m,
-                        (double)ex_raw, (double)ey_raw);
-        gcs().send_text(MAV_SEVERITY_INFO,
-                        "TRK p_ahrs=%.1f nav=%.1f err=%.1f",
-                        (double)degrees(ahrs.get_pitch()),
-                        (double)degrees(nav_pitch_rad_log),
-                        (double)degrees(nav_pitch_rad_log - ahrs.get_pitch()));
-    }
 
     // Settle ramp — linear 0→1 over TRK_SETTLE_S seconds from mode entry.
     // Applied to roll, pitch, and throttle PID outputs so all axes come up
@@ -168,12 +154,27 @@ void ModeTracking::update()
     {
         const float cruise        = plane.aparm.throttle_cruise.get();
         const float nav_pitch_rad = plane.nav_pitch_cd * 0.01f * (M_PI / 180.0f);
-        const float pitch_err     = nav_pitch_rad - ahrs.get_pitch();
+        const float pitch_err     = ahrs.get_pitch() - nav_pitch_rad;
         const float pid_out       = plane.g2.tracking_throt_pid.update_all(
                                         pitch_err, 0.0f, dt_s) * ramp;
         const float throttle = constrain_float(cruise + pid_out,
                                                3.0f * cruise / 4.0f,
-                                               7.0f * cruise / 5.0f);
+                                              7.0f * cruise / 5.0f);
+        if (now_ms - _last_dist_log_ms >= 1000U) {
+            _last_dist_log_ms = now_ms;
+            const float alt_rel_m = plane.current_loc.alt * 0.01f
+                                - plane.g2.tracking_target_alt_msl.get();
+            gcs().send_text(MAV_SEVERITY_INFO,
+                            "TRK d=%.0fm alt=%.0fm ex=%.2f ey=%.2f",
+                            (double)horiz_dist_m, (double)alt_rel_m,
+                            (double)ex_raw, (double)ey_raw);
+            gcs().send_text(MAV_SEVERITY_INFO,
+                            "TRK p_ahrs=%.1f nav=%.1f err=%.1f thr=%.1f%%",
+                            (double)degrees(ahrs.get_pitch()),
+                            (double)degrees(nav_pitch_rad),
+                            (double)degrees(pitch_err),
+                            (double)(throttle));
+        }
         SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, throttle);
     }
 
