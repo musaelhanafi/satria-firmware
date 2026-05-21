@@ -316,6 +316,30 @@ bool XPlane::load_dref_map(const char *map_json)
     }
     delete obj;
 
+    // Link ANGLE DREFs that share the same channel as atomic pairs (e.g. wing1r + wing1l).
+    // Two ANGLE DREFs on the same channel with opposite invert flags must be sent together so
+    // that X-Plane sees both aileron surfaces update in the same simulation frame.
+    // The first one encountered becomes the primary; the second becomes the secondary and is
+    // skipped in the main round-robin — it is sent by the primary's slot instead.
+    for (auto *d = drefs; d; d = d->next) {
+        if (d->type != DRefType::ANGLE || d->is_pair_secondary || d->pair != nullptr) {
+            continue;
+        }
+        for (auto *d2 = d->next; d2; d2 = d2->next) {
+            if (d2->type == DRefType::ANGLE &&
+                d2->channel == d->channel &&
+                d2->invert != d->invert &&
+                d2->pair == nullptr) {
+                d->pair = d2;
+                d2->pair = d;
+                d2->is_pair_secondary = true;
+                break;
+            }
+        }
+    }
+    // reset round-robin cursor whenever the map is reloaded
+    dref_cursor = nullptr;
+
     ::printf("Loaded %u DRefs from %s\n", unsigned(count), map_filename);
     return true;
 }
@@ -754,9 +778,9 @@ void XPlane::send_drefs(const struct sitl_input &input)
         return h > 1.0f ? h : 500.0f;
     };
 
-    // Send ALL non-FIXED DREFs every call (loopback UDP; no PPP bandwidth limit).
-    for (auto *d = drefs; d; d = d->next) {
-        float v;
+    // Compute value for one DRef and return it (does not send).
+    auto compute_dref = [&](const DRef *d) -> float {
+        float v = 0.0f;
         switch (d->type) {
         case DRefType::ANGLE: {
             const float pwm  = input.servos[d->channel-1];
@@ -769,8 +793,8 @@ void XPlane::send_drefs(const struct sitl_input &input)
         }
         case DRefType::RANGE: {
             const SRV_Channel *ch = SRV_Channels::srv_channel(d->channel - 1);
-            const float mn  = ch ? (float)ch->get_output_min() : 1000.0f;
-            const float mx  = ch ? (float)ch->get_output_max() : 2000.0f;
+            const float mn   = ch ? (float)ch->get_output_min() : 1000.0f;
+            const float mx   = ch ? (float)ch->get_output_max() : 2000.0f;
             const float span = mx - mn;
             if (!hal.util->get_soft_armed()) {
                 v = 0.0f;
@@ -780,44 +804,33 @@ void XPlane::send_drefs(const struct sitl_input &input)
             }
             break;
         }
-        case DRefType::FIXED:
-            continue;   // handled by priority pass above; skip in round-robin
         case DRefType::ELEVON_AILERON: {
-            // roll = (ch1 - ch2) / (half_up_ch1 + half_up_ch2)
-            const float ch1  = input.servos[d->channel-1];
-            const float ch2  = input.servos[d->channel2-1];
+            const float ch1   = input.servos[d->channel-1];
+            const float ch2   = input.servos[d->channel2-1];
             const float denom = servo_half_up(d->channel) + servo_half_up(d->channel2);
             v = d->range * (ch1 - ch2) / denom;
             v = constrain_float(v, -d->range, d->range);
             break;
         }
         case DRefType::ELEVON_ELEVATOR: {
-            // pitch = -((ch1 + ch2) - (trim1 + trim2)) / (half_up_ch1 + half_up_ch2)
-            const float ch1   = input.servos[d->channel-1];
-            const float ch2   = input.servos[d->channel2-1];
-            const float sum_trim  = servo_trim(d->channel) + servo_trim(d->channel2);
-            const float denom     = servo_half_up(d->channel) + servo_half_up(d->channel2);
+            const float ch1      = input.servos[d->channel-1];
+            const float ch2      = input.servos[d->channel2-1];
+            const float sum_trim = servo_trim(d->channel) + servo_trim(d->channel2);
+            const float denom    = servo_half_up(d->channel) + servo_half_up(d->channel2);
             v = -d->range * (ch1 + ch2 - sum_trim) / denom;
             v = constrain_float(v, -d->range, d->range);
             break;
         }
         case DRefType::VTAIL_ELEVATOR: {
-            // Demix vtail → elevator: -(vtail_right + vtail_left - (trim2 + trim4)) / half_sum
-            // channel = vtail_right (CH2), channel2 = vtail_left (CH4)
-            // ArduPlane mixer: vtail_right=(elev-rud)*gain, vtail_left=(elev+rud)*gain
-            // Sum cancels rudder: vtail_right+vtail_left = 2*elev*gain → pitch ∝ (ch1+ch2-sum_trim)
-            const float ch1       = input.servos[d->channel-1];
-            const float ch2       = input.servos[d->channel2-1];
-            const float sum_trim  = servo_trim(d->channel) + servo_trim(d->channel2);
-            const float denom     = servo_half_up(d->channel) + servo_half_up(d->channel2);
+            const float ch1      = input.servos[d->channel-1];
+            const float ch2      = input.servos[d->channel2-1];
+            const float sum_trim = servo_trim(d->channel) + servo_trim(d->channel2);
+            const float denom    = servo_half_up(d->channel) + servo_half_up(d->channel2);
             v = -d->range * (ch1 + ch2 - sum_trim) / denom;
             v = constrain_float(v, -d->range, d->range);
             break;
         }
         case DRefType::VTAIL_RUDDER: {
-            // Demix vtail → rudder: (vtail_left - vtail_right) / half_sum
-            // channel = vtail_right (CH2), channel2 = vtail_left (CH4)
-            // Difference cancels elevator: vtail_left-vtail_right = 2*rud*gain → heading ∝ (ch2-ch1)
             const float ch1   = input.servos[d->channel-1];
             const float ch2   = input.servos[d->channel2-1];
             const float denom = servo_half_up(d->channel) + servo_half_up(d->channel2);
@@ -832,20 +845,60 @@ void XPlane::send_drefs(const struct sitl_input &input)
             break;
         }
         default:
-            continue;
+            break;
         }
-
         if (d->invert) {
             v = -v;
         }
+        return v;
+    };
 
-        // Deadband check — skip if value unchanged
+    // Send one DRef if its value has changed beyond the deadband.  Returns true if sent.
+    auto try_send = [&](DRef *d) -> bool {
+        const float v = compute_dref(d);
         if (!isnan(d->last_sent) && fabsf(v - d->last_sent) < DREF_DEADBAND) {
-            continue;
+            return false;
         }
         d->last_sent = v;
         send_dref(d->name, v);
+        return true;
+    };
+
+    // Round-robin: advance to next primary (non-FIXED, non-secondary) DRef.
+    // Primaries are sent one per call; their paired secondary is sent atomically in the same slot.
+    // This caps outbound bandwidth to one DREF packet (~509 bytes) per scheduler tick, keeping
+    // the PPP link at 115200 baud from overflowing.
+    auto next_primary = [&](DRef *start) -> DRef* {
+        DRef *d = start ? start->next : drefs;
+        if (d == nullptr) d = drefs;                 // wrap around
+        DRef *begin = d;
+        while (d != nullptr) {
+            if (d->type != DRefType::FIXED && !d->is_pair_secondary) {
+                return d;
+            }
+            d = d->next ? d->next : drefs;
+            if (d == begin) break;                   // full lap, no primary found
+        }
+        return nullptr;
+    };
+
+    if (dref_cursor == nullptr) {
+        dref_cursor = next_primary(nullptr);
     }
+    if (dref_cursor == nullptr) {
+        return;  // no non-FIXED primary DREFs
+    }
+
+    // Send the current primary slot (and its pair atomically, if any).
+    try_send(dref_cursor);
+    if (dref_cursor->pair != nullptr) {
+        // Force-send pair even if within deadband to keep both surfaces in lock-step.
+        const float v = compute_dref(dref_cursor->pair);
+        dref_cursor->pair->last_sent = v;
+        send_dref(dref_cursor->pair->name, v);
+    }
+
+    dref_cursor = next_primary(dref_cursor);
 }
 
 

@@ -107,8 +107,10 @@ private:
         uint8_t channel2;  // secondary channel (elevon_left for elevon types)
         float range;
         float fixed_value;
-        bool invert;       // negate value before sending (e.g. right aileron from single channel)
-        float last_sent = NAN;   // last value sent — skip if change < deadband
+        bool invert;            // negate value before sending (e.g. right aileron from single channel)
+        float last_sent = NAN; // last value sent — skip if change < deadband
+        struct DRef *pair = nullptr;      // sibling sent atomically in same round-robin slot (e.g. aileron pair)
+        bool is_pair_secondary = false;   // skip in main round-robin; sent by primary's slot
     };
 
     // list of DRefs;

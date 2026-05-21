@@ -2,8 +2,8 @@
 #
 # Servo → X-Plane flight-model surface mapping (no joystick override for surfaces;
 # override_joystick removed so X-Plane does not re-write surface datarefs from yoke=0):
-#   CH1 (SERVO1, aileron)      → wing1r_ail1def  (normal)
-#                              → wing1l_ail1def  (inverted — single ArduPlane aileron channel)
+#   CH1 (SERVO1, aileron)      → wing1r_ail1def  (normal — positive = roll right)
+#                              → wing1l_ail1def  (inverted — left wing moves opposite)
 #   CH2 (SERVO2, vtail_right)  → vstab1_rud1def  (ArduPlane vtail mixer already applied)
 #   CH3 (SERVO3, throttle)     → ENGN_thro_use
 #   CH4 (SERVO4, vtail_left)   → vstab2_rud1def  (ArduPlane vtail mixer already applied)
@@ -28,8 +28,8 @@
     "sim/flightmodel/misc/jato_left"                  : { "type" : "fixed", "value" : 1.0 },
 
     # Aileron — single ArduPlane channel drives both wings (left wing inverted)
-    "sim/flightmodel/controls/wing1r_ail1def" : { "type" : "angle", "range" : 20.0, "channel" : 1, "invert" : true },
-    "sim/flightmodel/controls/wing1l_ail1def" : { "type" : "angle", "range" : 20.0, "channel" : 1 },
+    "sim/flightmodel/controls/wing1r_ail1def" : { "type" : "angle", "range" : 20.0, "channel" : 1, "invert":true},
+    "sim/flightmodel/controls/wing1l_ail1def" : { "type" : "angle", "range" : 20.0, "channel" : 1},
 
     # V-tail surfaces — direct angle mapping (ArduPlane vtail mixer pre-applied on CH2/CH4)
     "sim/flightmodel/controls/vstab1_rud1def" : { "type" : "angle", "range" : 20.0, "channel" : 2 },

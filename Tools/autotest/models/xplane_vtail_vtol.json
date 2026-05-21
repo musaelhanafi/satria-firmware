@@ -27,8 +27,8 @@
     "sim/flightmodel/misc/jato_left"                  : { "type" : "fixed", "value" : 1.0 },
 
     # Aileron — single ArduPlane channel drives both wings oppositely
-    "sim/flightmodel/controls/wing1r_ail1def" : { "type" : "angle", "range" : 20.0, "channel" : 1, "invert" : true },
-    "sim/flightmodel/controls/wing1l_ail1def" : { "type" : "angle", "range" : 20.0, "channel" : 1 },
+    "sim/flightmodel/controls/wing1r_ail1def" : { "type" : "angle", "range" : 20.0, "channel" : 1 },
+    "sim/flightmodel/controls/wing1l_ail1def" : { "type" : "angle", "range" : 20.0, "channel" : 1, "invert" : true },
 
     # V-tail surfaces — direct angle mapping (ArduPlane vtail mixer pre-applied on CH2/CH4)
     "sim/flightmodel/controls/vstab1_rud1def" : { "type" : "angle", "range" : 20.0, "channel" : 2 },
