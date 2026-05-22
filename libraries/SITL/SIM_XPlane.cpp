@@ -47,7 +47,9 @@ extern const AP_HAL::HAL& hal;
 #define XPLANE_JSON "xplane_plane.json"
 #endif
 #endif // XPLANE_JSON
-#define XPLANE_JSON_ELEVON "xplane_plane_elevon.json"
+#define XPLANE_JSON_ELEVON   "xplane_elevon.json"
+#define XPLANE_JSON_VTAIL    "xplane_vtail.json"
+#define XPLANE_JSON_VTAILVTOL "xplane_vtail_vtol.json"
 
 // DATA@ frame types. Thanks to TauLabs xplanesimulator.h
 // (which strangely enough acknowledges APM as a source!)
@@ -153,7 +155,20 @@ XPlane::XPlane(const char *frame_str) :
     AP_Param::set_default_by_name("SERVO5_MAX", 2000);
 #endif
 
-    const char *xplane_json = elevons ? XPLANE_JSON_ELEVON : XPLANE_JSON;
+    const bool vtail = strstr(frame_str, "-vtail") != nullptr;
+    const bool vtol  = strstr(frame_str, "-vtol")  != nullptr;
+
+    const char *xplane_json;
+    if (vtail && vtol) {
+        xplane_json = XPLANE_JSON_VTAILVTOL;
+    } else if (vtail) {
+        xplane_json = XPLANE_JSON_VTAIL;
+    } else if (elevons) {
+        xplane_json = XPLANE_JSON_ELEVON;
+    } else {
+        xplane_json = XPLANE_JSON;
+    }
+
     if (!load_dref_map(xplane_json)) {
         AP_HAL::panic("%s failed to load", xplane_json);
     }

@@ -3,14 +3,15 @@
 # the quad arm endpoints and configured as blade-element-theory rotors in
 # Plane Maker.
 #
-# ArduCopter H-frame motor order (FRAME_CLASS=1 FRAME_TYPE=3, same X positions reversed spin):
-#   CH1 = Motor 0   45°  CW   front-right → engine[0]
-#   CH2 = Motor 1 -135°  CW   rear-left   → engine[1]
-#   CH3 = Motor 2  -45°  CCW  front-left  → engine[2]
-#   CH4 = Motor 3  135°  CCW  rear-right  → engine[3]
+# ArduCopter X-frame motor order (AP_MotorsMatrix, angle clockwise from forward):
+#   CH1 = Motor 1  +45°  front-right  CCW  → engine[0]
+#   CH2 = Motor 2 +135°  rear-right    CW  → engine[1]
+#   CH3 = Motor 3 -135°  rear-left    CCW  → engine[2]
+#   CH4 = Motor 4  -45°  front-left    CW  → engine[3]
 #
 # Place engines in Plane Maker in this exact order (Engine Specs, engines 1-4):
-#   1=front-right  2=rear-left  3=front-left  4=rear-right
+#   1=front-right  2=rear-right  3=rear-left  4=front-left
+# Spin directions in Plane Maker: engine 1=CCW  2=CW  3=CCW  4=CW
 # If X-Plane rolls/pitches the wrong way, the engine placement doesn't match.
 
 {

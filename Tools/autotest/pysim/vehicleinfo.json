@@ -496,6 +496,64 @@
             "stratoblimp": {
                 "waf_target": "bin/arduplane",
                 "default_params_filename": "default_params/stratoblimp.parm"
+            },
+            "x86-hil": {
+                "model": "xplane",
+                "waf_target": "bin/arduplane",
+                "default_params_filename": "models/plane.parm"
+            },
+            "x86-hil-vtail": {
+                "model": "xplane-vtail",
+                "waf_target": "bin/arduplane",
+                "default_params_filename": [
+                    "models/plane.parm",
+                    "default_params/plane-vtail.parm"
+                ]
+            },
+            "x86-hil-elevon": {
+                "model": "xplane-elevon",
+                "waf_target": "bin/arduplane",
+                "default_params_filename": [
+                    "models/plane.parm",
+                    "default_params/plane-elevons.parm"
+                ]
+            },
+            "x86-hil-vtail-vtol": {
+                "model": "xplane-vtail-vtol",
+                "waf_target": "bin/arduplane",
+                "default_params_filename": [
+                    "default_params/quadplane.parm",
+                    "default_params/plane-vtail.parm"
+                ]
+            },
+            "fmuv3-hil": {
+                "model": "xplane",
+                "waf_target": "bin/arduplane",
+                "default_params_filename": "models/plane.parm"
+            },
+            "fmuv3-hil-vtail": {
+                "model": "xplane-vtail",
+                "waf_target": "bin/arduplane",
+                "default_params_filename": [
+                    "models/plane.parm",
+                    "default_params/plane-vtail.parm"
+                ]
+            },
+            "fmuv3-hil-elevon": {
+                "model": "xplane-elevon",
+                "waf_target": "bin/arduplane",
+                "default_params_filename": [
+                    "models/plane.parm",
+                    "default_params/plane-elevons.parm"
+                ]
+            },
+            "fmuv3-hil-vtail-vtol": {
+                "model": "xplane-vtail-vtol",
+                "waf_target": "bin/arduplane",
+                "default_params_filename": [
+                    "default_params/quadplane.parm",
+                    "default_params/plane-vtail.parm"
+                ]
             }
         }
     },

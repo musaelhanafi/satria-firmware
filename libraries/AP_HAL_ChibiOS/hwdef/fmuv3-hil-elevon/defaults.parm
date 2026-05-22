@@ -1,4 +1,5 @@
-# Default parameters for fmuv3-hil (SITL-on-hardware with X-Plane backend)
+# Default parameters for fmuv3-hil-elevon (SITL-on-hardware with X-Plane backend)
+# Flying-wing elevon: CH1=left elevon (ElevonLeft), CH2=right elevon (ElevonRight), CH3=throttle.
 # X-Plane provides physics; SITL sensor backends read from SIMState which
 # is populated by the XPlane UDP data stream.
 
@@ -12,24 +13,11 @@ EK3_ENABLE 0
 # Compass: enabled — SITL compass backend reads from SIMState
 COMPASS_USE 1
 
-# GPS: SITL GPS backend (type 100) — reads position/velocity from SIMState
-# which the XPlane backend populates from X-Plane DATA@ row 20/21.
+# GPS: SITL GPS backend (type 100)
 GPS1_TYPE 100
 
-# Airspeed: SITL backend (reads airspeed from SIMState / X-Plane)
+# Airspeed: SITL backend
 ARSPD_TYPE 100
-
-# ── Servo output functions — standard 4-channel fixed-wing ───────────────────
-SERVO1_FUNCTION 4    # Aileron
-SERVO2_FUNCTION 19   # Elevator
-SERVO3_FUNCTION 70   # Throttle
-SERVO4_FUNCTION 21   # Rudder
-
-# ── RC input channel mapping ──────────────────────────────────────────────────
-RCMAP_ROLL      1
-RCMAP_PITCH     2
-RCMAP_THROTTLE  3
-RCMAP_YAW       4
 
 # Safety: no safety switch needed in simulation
 BRD_SAFETY_DEFLT 0
@@ -38,9 +26,7 @@ BRD_SAFETY_DEFLT 0
 ARMING_SKIPCHK -1
 ARMING_REQUIRE 1
 
-# RC: disable throttle failsafe and RC override timeout so the system
-# does not block on "Waiting for RC" when no physical RC is connected.
-# RC_CHANNELS_OVERRIDE (from test_joystick.py / GCS) is always accepted.
+# RC: disable throttle failsafe and RC override timeout
 THR_FAILSAFE 0
 RC_OVERRIDE_TIME -1
 
@@ -55,39 +41,38 @@ LOG_DISARM 0
 # SITL speedup: 1x real-time
 SIM_SPEEDUP 1
 
-# ── Auto takeoff — ground roll + steering ─────────────────────────────────────
-# Apply full throttle immediately on TKOFF, no acceleration pre-check.
+# ── Servo output functions — flying-wing elevon ───────────────────────────────
+# ArduPlane pre-mixes aileron + elevator into elevon outputs:
+#   ElevonLeft  (77): elevator + aileron → CH1 → wing1l_ail1def
+#   ElevonRight (78): elevator - aileron → CH2 → wing1r_ail1def (inverted in JSON)
+SERVO1_FUNCTION 77   # ElevonLeft
+SERVO2_FUNCTION 78   # ElevonRight
+SERVO3_FUNCTION 70   # Throttle
+
+# ── RC input channel mapping ──────────────────────────────────────────────────
+RCMAP_ROLL      1
+RCMAP_PITCH     2
+RCMAP_THROTTLE  3
+RCMAP_YAW       4
+
+# ── Auto takeoff ──────────────────────────────────────────────────────────────
 TKOFF_THR_MINACC 0
 TKOFF_THR_MINSPD 0
-TKOFF_THR_DELAY 0
-TKOFF_THR_MAX 100
-
-# Rotate (pitch up) at this airspeed (m/s) — set to suit the aircraft stall speed.
+TKOFF_THR_DELAY  0
+TKOFF_THR_MAX    100
 TKOFF_ROTATE_SPD 12
-
-# Ground steering active below this altitude AGL (m).
-# Rudder/nose-wheel tracks takeoff heading during ground roll.
-GROUND_STEER_ALT 5
-
-# Elevator hold during ground roll: 0 = neutral (tricycle gear).
-# Positive = nose-down (taildragger); adjust if the nose rises too early.
+GROUND_STEER_ALT 0
 TKOFF_TDRAG_ELEV 0
 TKOFF_TDRAG_SPD1 0
 
 # ── SITL servo override ───────────────────────────────────────────────────────
-# SIM_OH_MASK: pass RC hardware input directly to all 8 servo channels.
-# RANGE-type DREFs (throttle) are forced to 0 in SIM_XPlane when disarmed,
-# so the prop stays idle regardless of RC stick position until armed.
 SIM_OH_MASK 255
 
 # ── X-Plane UDP bind port ────────────────────────────────────────────────────
 # X-Plane → Settings → Net Connections → Data: send DATA@ to 10.0.0.2:49005
-# SIM_XP_BIND_PORT overrides the default (49001) so the port matches X-Plane.
 SIM_XP_BIND_PORT 49005
 
 # ── SITL home position — Bandung WICC ────────────────────────────────────────
-# Without a valid home the SITL GPS reports 0°N 0°E; EKF2 will not converge
-# and QGC shows no GPS position.  These values must match X-Plane's location.
 SIM_OPOS_LAT -6.897434
 SIM_OPOS_LNG  107.566887
 SIM_OPOS_ALT  744.0
@@ -110,14 +95,10 @@ NET_ENABLE 1
 SERIAL2_PROTOCOL 48
 SERIAL2_BAUD 115
 
-# PPP local IP — AP_Networking_Config.h includes AP_NETWORKING_BACKEND_PPP in
-# AP_NETWORKING_CONTROLS_HOST_IP_SETTINGS_ENABLED so these params exist.
-# restart_instance() calls ppp_set_ipcp_ouraddr(10.0.0.2) before ppp_connect().
 NET_IPADDR0 10
 NET_IPADDR1 0
 NET_IPADDR2 0
 NET_IPADDR3 2
 
 # NET_OPTIONS bit 6 (64) = PPP_ECHO_LIMIT_DISABLE
-# Without this, lwIP sends LCP echo every 1 s and terminates after 5 failures.
 NET_OPTIONS 64
