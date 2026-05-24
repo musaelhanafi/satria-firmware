@@ -1,0 +1,66 @@
+# ArduPlane default params for X-Plane SITL (xplane_plane.json)
+# Standard AERT aircraft: CH1=Aileron CH2=Elevator CH3=Throttle CH4=Rudder CH5=Flaps
+
+# --- SITL: skip prearm checks ---
+ARMING_SKIPCHK      -1
+INS_GYR_CAL         0
+INS_ACCOFFS_X       0.001
+INS_ACCOFFS_Y       0.001
+INS_ACCOFFS_Z       0.001
+INS_ACCSCAL_X       1.001
+INS_ACCSCAL_Y       1.001
+INS_ACCSCAL_Z       1.001
+INS_ACC2OFFS_X      0.001
+INS_ACC2OFFS_Y      0.001
+INS_ACC2OFFS_Z      0.001
+INS_ACC2SCAL_X      1.001
+INS_ACC2SCAL_Y      1.001
+INS_ACC2SCAL_Z      1.001
+
+# --- Servo functions ---
+SERVO1_FUNCTION     4       # Aileron
+SERVO2_FUNCTION     19      # Elevator
+SERVO3_FUNCTION     70      # Throttle
+SERVO4_FUNCTION     21      # Rudder
+SERVO5_FUNCTION     3       # Flap auto
+
+# --- Flight envelope ---
+AIRSPEED_CRUISE     22.0
+AIRSPEED_MIN        10.0
+AIRSPEED_MAX        30.0
+TRIM_THROTTLE       50
+PTCH_LIM_MIN_DEG    -20.0
+PTCH_LIM_MAX_DEG     25.0
+ROLL_LIMIT_DEG       65.0
+
+# --- Roll rate controller ---
+RLL_RATE_P          0.300
+RLL_RATE_I          0.250
+RLL_RATE_D          0.017
+RLL_RATE_FF         0.237
+RLL2SRV_TCONST      0.250
+RLL2SRV_RMAX        90.0
+
+# --- Pitch rate controller ---
+PTCH_RATE_P         0.150
+PTCH_RATE_I         0.110
+PTCH_RATE_D         0.007
+PTCH_RATE_FF        0.596
+PTCH2SRV_TCONST     0.250
+PTCH2SRV_RMAX_UP    90.0
+PTCH2SRV_RMAX_DN    90.0
+PTCH2SRV_RLL        1.0
+
+# --- Navigation ---
+NAVL1_PERIOD        15.0
+WP_LOITER_RAD       80.0
+WP_RADIUS           50.0
+KFF_RDDRMIX         0.5
+
+# --- Flight modes ---
+FLTMODE1            10      # Auto
+FLTMODE2            11      # RTL
+FLTMODE3            12      # Loiter
+FLTMODE4             5      # FBW-B
+FLTMODE5             2      # Stabilize
+FLTMODE6             0      # Manual

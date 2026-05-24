@@ -1,0 +1,70 @@
+# ArduPlane default params for X-Plane SITL (xplane_elevon.json)
+# Flying-wing elevon aircraft: CH1=LeftElevon  CH2=RightElevon  CH3=Throttle
+# ArduPlane elevon mixer pre-applied on CH1/CH2 (SERVO_FUNCTION 77/78)
+
+# --- SITL: skip prearm checks ---
+ARMING_SKIPCHK      -1
+INS_GYR_CAL         0
+INS_ACCOFFS_X       0.001
+INS_ACCOFFS_Y       0.001
+INS_ACCOFFS_Z       0.001
+INS_ACCSCAL_X       1.001
+INS_ACCSCAL_Y       1.001
+INS_ACCSCAL_Z       1.001
+INS_ACC2OFFS_X      0.001
+INS_ACC2OFFS_Y      0.001
+INS_ACC2OFFS_Z      0.001
+INS_ACC2SCAL_X      1.001
+INS_ACC2SCAL_Y      1.001
+INS_ACC2SCAL_Z      1.001
+
+# --- Servo functions ---
+SERVO1_FUNCTION     77      # LeftElevon   (→ wing1l_ail1def)
+SERVO2_FUNCTION     78      # RightElevon  (→ wing1r_ail1def, inverted in JSON)
+SERVO3_FUNCTION     70      # Throttle
+
+# --- Elevon mixer gain ---
+MIXING_GAIN         0.5
+
+# --- Flight envelope ---
+AIRSPEED_CRUISE     18.0
+AIRSPEED_MIN         9.0
+AIRSPEED_MAX        28.0
+TRIM_THROTTLE       45
+PTCH_LIM_MIN_DEG    -25.0
+PTCH_LIM_MAX_DEG     30.0
+ROLL_LIMIT_DEG       60.0
+
+# --- Roll rate controller ---
+RLL_RATE_P          0.250
+RLL_RATE_I          0.200
+RLL_RATE_D          0.012
+RLL_RATE_FF         0.200
+RLL2SRV_TCONST      0.300
+RLL2SRV_RMAX        90.0
+
+# --- Pitch rate controller ---
+PTCH_RATE_P         0.120
+PTCH_RATE_I         0.100
+PTCH_RATE_D         0.006
+PTCH_RATE_FF        0.500
+PTCH2SRV_TCONST     0.300
+PTCH2SRV_RMAX_UP    90.0
+PTCH2SRV_RMAX_DN    90.0
+PTCH2SRV_RLL        1.0
+
+# --- Navigation ---
+NAVL1_PERIOD        15.0
+WP_LOITER_RAD       60.0
+WP_RADIUS           40.0
+
+# --- No rudder on flying wing ---
+KFF_RDDRMIX         0.0
+
+# --- Flight modes ---
+FLTMODE1            10
+FLTMODE2            11
+FLTMODE3            12
+FLTMODE4             5
+FLTMODE5             2
+FLTMODE6             0

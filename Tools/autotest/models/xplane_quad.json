@@ -5,13 +5,13 @@
 #
 # ArduCopter X-frame motor order (AP_MotorsMatrix, angle clockwise from forward):
 #   CH1 = Motor 1  +45°  front-right  CCW  → engine[0]
-#   CH2 = Motor 2 +135°  rear-right    CW  → engine[1]
-#   CH3 = Motor 3 -135°  rear-left    CCW  → engine[2]
-#   CH4 = Motor 4  -45°  front-left    CW  → engine[3]
+#   CH2 = Motor 2 -135°  back-left    CCW  → engine[1]
+#   CH3 = Motor 3  -45°  front-left    CW  → engine[2]
+#   CH4 = Motor 4 +135°  back-right    CW  → engine[3]
 #
 # Place engines in Plane Maker in this exact order (Engine Specs, engines 1-4):
-#   1=front-right  2=rear-right  3=rear-left  4=front-left
-# Spin directions in Plane Maker: engine 1=CCW  2=CW  3=CCW  4=CW
+#   1=front-right  2=back-left  3=front-left  4=back-right
+# Spin directions in Plane Maker: engine 1=CCW  2=CCW  3=CW  4=CW
 # If X-Plane rolls/pitches the wrong way, the engine placement doesn't match.
 
 {
@@ -21,6 +21,13 @@
     "sim/operation/override/override_joystick"      : { "type" : "fixed", "value" : 1 },
     "sim/operation/override/override_throttles"     : { "type" : "fixed", "value" : 1 },
     "sim/operation/override/override_flightcontrol" : { "type" : "fixed", "value" : 1 },
+
+    # Engine start/stop — must be 1 for X-Plane to accept ENGN_thro_use commands.
+    # RUNNING type: outputs 1 when armed and channel PWM > min, 0 otherwise.
+    "sim/flightmodel/engine/ENGN_running[0]"  : { "type" : "running", "range" : 1, "channel" : 1 },
+    "sim/flightmodel/engine/ENGN_running[1]"  : { "type" : "running", "range" : 1, "channel" : 2 },
+    "sim/flightmodel/engine/ENGN_running[2]"  : { "type" : "running", "range" : 1, "channel" : 3 },
+    "sim/flightmodel/engine/ENGN_running[3]"  : { "type" : "running", "range" : 1, "channel" : 4 },
 
     # Individual motor throttle commands (0.0 – 1.0)
     "sim/flightmodel/engine/ENGN_thro_use[0]" : { "type" : "range", "range" : 1, "channel" : 1 },

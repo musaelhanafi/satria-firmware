@@ -147,6 +147,70 @@ private:
     bool last_armed = false;    // tracks arm state for DREF deadband reset
 
     uint32_t xplane_version;
+
+    // RREF-based gyro (Prad/Qrad/Rrad) — matches PX4xplane convention exactly.
+    // Populated by handle_rref(); used by AngularVelocities case when valid.
+    Vector3f rref_gyro;
+    uint8_t  rref_gyro_mask  = 0;   // bit 0=P, 1=Q, 2=R; valid when ==7
+    bool     rref_gyro_valid = false;
+
+    // Gyro bias compensation. X-Plane reports nonzero Prad/Qrad/Rrad for an
+    // aircraft that is visually stationary (model physics quirk; observed
+    // ~-16 to +11 deg/s on the Z axis at SITL boot). We mimic real-drone
+    // gyro calibration: accumulate the first N samples per axis at boot,
+    // compute the mean as the bias, then subtract it from every subsequent
+    // sample before publishing into the EKF / rate controller.
+    //
+    // Variance gate: if the std-dev of a calibration window exceeds
+    // GYRO_BIAS_STDDEV_LIMIT, the aircraft was clearly moving — discard
+    // the window and restart accumulation. Keeps retrying until we catch
+    // a truly-stationary window. Prevents the failure mode where the SITL
+    // is restarted while a previous crash is still tumbling the airframe.
+    static constexpr uint16_t GYRO_BIAS_SAMPLES = 200;       // ~2.5 s at 80 Hz RREF
+    static constexpr float    GYRO_BIAS_STDDEV_LIMIT = 0.05f; // rad/s ≈ 2.9°/s
+    Vector3f rref_gyro_bias;
+    Vector3f rref_gyro_bias_sum;
+    Vector3f rref_gyro_bias_sum_sq;
+    uint16_t rref_gyro_bias_count_x = 0;
+    uint16_t rref_gyro_bias_count_y = 0;
+    uint16_t rref_gyro_bias_count_z = 0;
+    bool     rref_gyro_bias_locked_x = false;
+    bool     rref_gyro_bias_locked_y = false;
+    bool     rref_gyro_bias_locked_z = false;
+    bool     rref_gyro_bias_reported = false;
+    uint32_t rref_gyro_bias_rejects  = 0;   // count of discarded windows
+
+    // Accelerometer magnitude calibration. Mirrors the px4xplane plugin's
+    // AccelCalibration: X-Plane aircraft models can report |accel| ≠ 1g when
+    // stationary. Fix is MAGNITUDE SCALING — compute scale = g / measured_|a|
+    // while stationary, then multiply every subsequent accel sample.
+    // Magnitude-scale preserves direction so works at all attitudes (offset
+    // subtraction would only be correct at the calibration attitude).
+    static constexpr uint16_t ACCEL_CAL_SAMPLES        = 200;
+    static constexpr uint16_t ACCEL_CAL_WAIT_SAMPLES   = 50;
+    static constexpr float    ACCEL_CAL_STATIONARY_VEL = 0.5f;
+    float    accel_scale_factor = 1.0f;
+    float    accel_cal_sum_mag  = 0.f;
+    uint16_t accel_cal_count    = 0;
+    uint16_t accel_cal_stationary_count = 0;
+    bool     accel_calibrated   = false;
+
+    // IIR low-pass filter on IMU samples. X-Plane physics produces high-freq
+    // gyro/accel jitter (we measured σ≈17°/s on stationary models) that gets
+    // republished raw without smoothing → EKF instability → crashes on
+    // takeoff. The px4xplane plugin uses a Kalman tracker for this; we use
+    // a simpler 1st-order IIR. α=0.8 → ~11 ms lag at 80 Hz RREF, snappy
+    // enough to preserve fast attitude dynamics while killing jitter.
+    static constexpr float SENSOR_LPF_ALPHA = 0.8f;
+    Vector3f rref_gyro_filt;
+    Vector3f rref_accel_filt;
+    bool     sensor_filt_initialized = false;
+
+    // RREF-based accel (g_axil/g_side/g_nrml) — matches PX4xplane convention exactly.
+    // Populated by handle_rref(); used by Gload case when valid.
+    Vector3f rref_accel;
+    uint8_t  rref_accel_mask  = 0;  // bit 0=axil, 1=side, 2=nrml; valid when ==7
+    bool     rref_accel_valid = false;
 };
 
 

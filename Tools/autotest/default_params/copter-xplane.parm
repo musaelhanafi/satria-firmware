@@ -1,0 +1,202 @@
+# ArduCopter default params for X-Plane SITL (xplane_quad.json, X-frame)
+
+# --- Frame ---
+FRAME_CLASS         1       # Quad
+FRAME_TYPE          1       # X
+
+# --- Motor SERVO function mapping ---
+# After EEPROM wipe, SERVO functions reset to 0 (disabled). Without these,
+# FRAME_CLASS alone isn't enough — ArduCopter can't actually output to motors.
+# Function values: 33=Motor1, 34=Motor2, 35=Motor3, 36=Motor4.
+SERVO1_FUNCTION     33
+SERVO2_FUNCTION     34
+SERVO3_FUNCTION     35
+SERVO4_FUNCTION     36
+
+# --- AHRS: use SIM backend (direct X-Plane quaternion, zero EKF lag) ---
+AHRS_EKF_TYPE       10
+EK3_ENABLE          1
+EK2_ENABLE          0
+
+# --- Sensors: SITL backends ---
+GPS1_TYPE           100
+
+# --- Compass: one SITL instance ---
+COMPASS_USE         1
+COMPASS_USE2        0
+COMPASS_USE3        0
+SIM_MAG2_DEVID      0
+SIM_MAG3_DEVID      0
+
+# --- Safety / arming ---
+BRD_SAFETY_DEFLT    0
+# 0 = disable all pre-arm checks (standard SITL practice). Even with sensor
+# cal data below set to look "calibrated," ArduCopter applies additional
+# consistency checks (accel inconsistency, gyro rate vs loop rate) that
+# fail in SITL with X-Plane bridge sample rates. ARMING_CHECK=0 is the
+# clean way out. Set to 1 to re-enable for real-hardware-like testing.
+ARMING_CHECK        0
+ARMING_REQUIRE      1
+
+# --- Sensor calibration policy ---
+# Don't set per-sensor IDs/offsets here. ArduCopter's SITL driver assigns
+# its own device IDs at boot — hard-coding them in this file causes a
+# mismatch ("cal saved for sensor X, current sensor is Y") which makes
+# cal-required errors appear ON TOP of what we're trying to suppress.
+#
+# Instead, rely on ARMING_CHECK=0 (above) to bypass all checks, plus the
+# compass settings below to keep it simple. If you ever want to re-enable
+# checks, run `accelcalsimple` and `calibrate gyros` in MAVProxy.
+
+# AHRS level trim — small values mark the "place vehicle level" step
+# of accel cal as completed. These don't reference a specific sensor ID
+# so they're safe to set here.
+AHRS_TRIM_X         0.001
+AHRS_TRIM_Y         0.001
+
+# Compass — disable secondary compasses, leave primary at default behavior.
+COMPASS_USE         1
+COMPASS_LEARN       0          # disable in-flight learning
+COMPASS_AUTODEC     1          # auto-set declination from GPS
+COMPASS_OFFS_MAX    850        # widen offset acceptance for SITL noise
+
+# Disable compasses 2 and 3 entirely (single-compass SITL setup)
+COMPASS_USE2        0
+COMPASS_USE3        0
+SIM_MAG2_DEVID      0
+SIM_MAG3_DEVID      0
+
+# --- RC ---
+THR_FAILSAFE        0
+RC_OVERRIDE_TIME    -1
+
+# --- RC deadzones widened for SITL joystick neutral-position offsets ---
+# QGC's joystick / SITL's RC source rarely centers exactly at 1500. Observed
+# neutral values: R=1483, P=1515, T=1470, Y=1479 (15-30µs off-center).
+# Default deadzones (20-30µs) are too tight — vehicle treats joystick rest
+# position as "pilot input" → triggers override in GUIDED/LOITER/AUTO/LAND
+# and disables autonomy. 60µs comfortably covers typical joystick drift.
+RC1_DZ              60
+RC2_DZ              60
+RC3_DZ              60
+RC4_DZ              60
+
+# --- Gyro boot-time calibration ---
+# INS_GYR_CAL = 1 → auto-calibrate gyros at boot. Was 0 (never calibrate),
+# which made ArduCopter report "gyros not calibrated" even with offsets set.
+# SITL needs auto-cal at boot to mark gyros as cal-done.
+INS_GYR_CAL         1
+# Note: INS_ACCOFFS / INS_ACCSCAL already defined above (lines ~40), don't duplicate.
+
+# --- Scheduler ---
+SCHED_LOOP_RATE     100
+
+# --- INS filters ---
+INS_GYRO_FILTER     20
+INS_ACCEL_FILTER    20
+
+# --- Motor settings ---
+# MOT_THST_HOVER bumped 0.35 → 0.65 after live diagnostic showed the X-Plane
+# quad model averages ~69% PWM during attempted hover. Default 0.35 caused
+# sticks-centered to produce throttle that couldn't sustain flight → vehicle
+# fell from altitude → wild attitude from saturated motor mixer.
+# MOT_HOVER_LEARN=2 lets the controller refine and save the value during flight.
+MOT_PWM_TYPE        0
+MOT_PWM_MIN         1000
+MOT_PWM_MAX         2000
+MOT_SPIN_ARM        0.10
+MOT_SPIN_MIN        0.15
+MOT_THST_EXPO       0.65
+MOT_THST_HOVER      0.65
+MOT_HOVER_LEARN     2
+
+# --- Angle controller ---
+ATC_ANG_RLL_P       4.5
+ATC_ANG_PIT_P       4.5
+ATC_ANG_YAW_P       4.5
+
+# --- Roll rate PID ---
+# D=0: X-Plane round-trip latency (~1 frame) makes derivative unstable on stale RREF data.
+ATC_RAT_RLL_P       0.100
+ATC_RAT_RLL_I       0.050
+ATC_RAT_RLL_D       0.000
+ATC_RAT_RLL_FF      0.000
+ATC_RAT_RLL_FLTD    10.0
+ATC_RAT_RLL_IMAX    0.5
+
+# --- Pitch rate PID ---
+ATC_RAT_PIT_P       0.100
+ATC_RAT_PIT_I       0.050
+ATC_RAT_PIT_D       0.000
+ATC_RAT_PIT_FF      0.000
+ATC_RAT_PIT_FLTD    10.0
+ATC_RAT_PIT_IMAX    0.5
+
+# --- Yaw rate PID ---
+# PX4 equivalent: MC_YAWRATE_P=2.0 × MC_YAWRATE_K=0.6 = ~1.2 effective P.
+# P<0.5 cannot overcome the X-Plane model's yaw torque → copter spins on throttle.
+ATC_RAT_YAW_P       0.800
+ATC_RAT_YAW_I       0.020
+ATC_RAT_YAW_D       0.000
+ATC_RAT_YAW_IMAX    0.5
+
+
+# =============================================================================
+# Aligned with PX4 xplane-sitl tuning (2026-05-24).
+# ArduCopter uses centimeters/centidegrees where PX4 uses meters/degrees.
+# =============================================================================
+
+# --- Speed / waypoint behavior ---
+# ArduCopter doesn't tolerate the same aggressive values as PX4 in SITL with
+# the X-Plane quad model — the rate loop tuning (ATC_RAT_RLL_P=0.10 above) is
+# conservative for X-Plane sensor lag, so navigation has to match.
+# 2026-05-24: pulled back from PX4-direct-copy values that crashed on takeoff.
+WPNAV_SPEED         1500      # cm/s — 15 m/s cruise (down from 2200 that crashed)
+WPNAV_SPEED_UP      300       # cm/s — 3 m/s ascent (was 1000, way too aggressive)
+WPNAV_SPEED_DN      150       # cm/s — 1.5 m/s descent
+WPNAV_ACCEL         500       # cm/s² — 5 m/s² horizontal accel (was 1000)
+WPNAV_ACCEL_Z       200       # cm/s² — gentle vertical accel
+WPNAV_RADIUS        1500      # cm — 15 m WP radius (down from 2500, matches lower speed)
+
+# --- Tilt limit ---
+# 45° gives plenty of horizontal authority while keeping the rate loop within
+# its working envelope. PX4's 55° required more PID headroom than this AC has.
+ANGLE_MAX           4500
+
+# --- Pilot speeds (manual flight) ---
+PILOT_SPEED_UP      300       # cm/s, 3 m/s manual ascent
+PILOT_SPEED_DN      150       # cm/s, 1.5 m/s manual descent
+PILOT_TKOFF_ALT     0         # 0 = use stick to climb; set e.g. 1000 for auto-takeoff to 10m
+
+# --- Landing ---
+# PX4: MPC_LAND_SPEED=0.7 m/s, LNDMC_TRIG_TIME=0.5 s
+LAND_SPEED          70        # cm/s, final descent speed
+LAND_SPEED_HIGH     250       # cm/s, descent rate above LAND_ALT_LOW (2.5 m/s)
+LAND_REPOSITION     0         # disable RC repositioning during land (cleaner SITL behavior)
+
+# --- Position controller ---
+# PX4 has MPC_XY_P=0.05 (very soft) in the upstream xplane-sitl baseline.
+# AC's PSC_POSXY_P default is 1.0; lower to soften horizontal pull.
+PSC_POSXY_P         1.0       # leave at default; match PX4 by reducing if needed
+PSC_VELXY_P         2.0       # default
+PSC_VELXY_I         1.0       # default
+PSC_VELXY_D         0.5       # default
+PSC_POSZ_P          1.0       # vertical position P
+PSC_VELZ_P          5.0       # vertical velocity P
+
+# --- Loiter / hold ---
+LOIT_SPEED          1500      # cm/s, matches mission cruise
+LOIT_ACC_MAX        500       # cm/s² (matches WPNAV_ACCEL)
+
+# --- Mission yaw behavior ---
+# PX4 MIS_YAW_ERR=30° — ArduCopter uses WP_YAW_BEHAVIOR for yaw policy.
+# 1 = face next WP (matches PX4 default behavior).
+WP_YAW_BEHAVIOR     1
+
+# --- Auto-disarm grace period ---
+# Default 10 s is too tight for "arm in STABILIZE → switch to AUTO" workflow:
+# the few-second delay between arming and takeoff command can hit the auto-
+# disarm timeout, leaving vehicle disarmed in AUTO mode and showing
+# "not armable" (because AUTO mode itself rejects arm commands).
+# 60 s gives plenty of time to switch modes and start the mission.
+DISARM_DELAY        60

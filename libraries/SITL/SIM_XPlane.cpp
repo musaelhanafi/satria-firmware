@@ -41,7 +41,9 @@
 extern const AP_HAL::HAL& hal;
 
 #ifndef XPLANE_JSON
-#if APM_BUILD_TYPE(APM_BUILD_Heli)
+#if APM_BUILD_TYPE(APM_BUILD_ArduCopter)
+#define XPLANE_JSON "xplane_quad.json"
+#elif APM_BUILD_TYPE(APM_BUILD_Heli)
 #define XPLANE_JSON "xplane_heli.json"
 #else
 #define XPLANE_JSON "xplane_plane.json"
@@ -87,6 +89,12 @@ enum {
 
 enum RREF {
     RREF_VERSION = 1,
+    RREF_PRAD    = 2,   // sim/flightmodel/position/Prad    — roll  rate (rad/s)
+    RREF_QRAD    = 3,   // sim/flightmodel/position/Qrad    — pitch rate (rad/s)
+    RREF_RRAD    = 4,   // sim/flightmodel/position/Rrad    — yaw   rate (rad/s)
+    RREF_GAXIL   = 5,   // sim/flightmodel/forces/g_axil    — axial G (forward, Gs)
+    RREF_GSIDE   = 6,   // sim/flightmodel/forces/g_side    — lateral G (right, Gs)
+    RREF_GNRML   = 7,   // sim/flightmodel/forces/g_nrml    — normal G (up, Gs)
 };
 
 static const uint8_t required_data[] {
@@ -567,7 +575,20 @@ bool XPlane::receive_data(void)
             break;
 
         case AngularVelocities:
-            if (is_xplane12()) {
+            if (rref_gyro_valid) {
+                // Use DREF Prad/Qrad/Rrad — same source PX4xplane uses.
+                // rref_gyro is already bias-compensated in handle_rref().
+                Vector3f gyro_raw = rref_gyro;
+                // IIR low-pass to smooth X-Plane physics jitter that would
+                // otherwise destabilize the EKF / rate controller.
+                if (!sensor_filt_initialized) {
+                    rref_gyro_filt = gyro_raw;
+                } else {
+                    rref_gyro_filt = gyro_raw * SENSOR_LPF_ALPHA
+                                   + rref_gyro_filt * (1.0f - SENSOR_LPF_ALPHA);
+                }
+                gyro = rref_gyro_filt;
+            } else if (is_xplane12()) {
                 gyro.x = radians(data[1]);
                 gyro.y = radians(data[2]);
                 gyro.z = radians(data[3]);
@@ -582,9 +603,40 @@ bool XPlane::receive_data(void)
             break;
 
         case Gload:
-            accel_body.z = -data[5] * GRAVITY_MSS;
-            accel_body.x = data[6] * GRAVITY_MSS;
-            accel_body.y = data[7] * GRAVITY_MSS;
+            if (rref_accel_valid) {
+                // Use g_axil/g_side/g_nrml DREFs — same sources PX4xplane uses.
+                // Sign convention: specific force = -(gravity component along axis).
+                // g_axil>0 when nose-down → accel_body.x should be negative → negate.
+                // g_nrml>0 when lift up   → accel_body.z should be -g at rest → negate.
+                Vector3f accel_raw;
+                accel_raw.x = -rref_accel.x * GRAVITY_MSS;
+                accel_raw.y =  rref_accel.y * GRAVITY_MSS;
+                accel_raw.z = -rref_accel.z * GRAVITY_MSS;
+
+                // IIR low-pass (same α as gyro).
+                if (!sensor_filt_initialized) {
+                    rref_accel_filt = accel_raw;
+                    sensor_filt_initialized = true;
+                } else {
+                    rref_accel_filt = accel_raw * SENSOR_LPF_ALPHA
+                                    + rref_accel_filt * (1.0f - SENSOR_LPF_ALPHA);
+                }
+
+                // Accel magnitude scaling DISABLED (2026-05-24).
+                // The X-Plane quad model reports |a| ≈ 7.74 m/s² stationary
+                // (not 9.81). The px4xplane plugin "corrects" this to 9.81 via
+                // magnitude scaling, which works in PX4. But ArduCopter's EKF3
+                // already had its accel-bias state silently compensating for
+                // the X-Plane offset — when we "fix" the magnitude upstream,
+                // the bias state becomes wrong and altitude estimate drifts.
+                // Verdict: trust the X-Plane raw magnitude, let EKF3 learn its
+                // own bias. Keep only the IIR low-pass smoothing.
+                accel_body = rref_accel_filt;
+            } else {
+                accel_body.z = -data[5] * GRAVITY_MSS;
+                accel_body.x =  data[6] * GRAVITY_MSS;
+                accel_body.y =  data[7] * GRAVITY_MSS;
+            }
             break;
 
         case PropPitch: {
@@ -720,6 +772,107 @@ void XPlane::handle_rref(const uint8_t *pkt, uint32_t len)
             ::printf("XPlane version %.0f\n", ref_value_f);
         }
         xplane_version = uint32_t(ref_value_f);
+        break;
+    case RREF_PRAD:
+        if (!rref_gyro_bias_locked_x) {
+            rref_gyro_bias_sum.x    += ref_value_f;
+            rref_gyro_bias_sum_sq.x += ref_value_f * ref_value_f;
+            rref_gyro_bias_count_x++;
+            if (rref_gyro_bias_count_x >= GYRO_BIAS_SAMPLES) {
+                const float n    = rref_gyro_bias_count_x;
+                const float mean = rref_gyro_bias_sum.x / n;
+                const float var  = (rref_gyro_bias_sum_sq.x / n) - (mean * mean);
+                if (var > GYRO_BIAS_STDDEV_LIMIT * GYRO_BIAS_STDDEV_LIMIT) {
+                    // Window had too much variation — vehicle wasn't stationary.
+                    // Discard and start over.
+                    rref_gyro_bias_sum.x    = 0;
+                    rref_gyro_bias_sum_sq.x = 0;
+                    rref_gyro_bias_count_x  = 0;
+                    rref_gyro_bias_rejects++;
+                } else {
+                    rref_gyro_bias.x = mean;
+                    rref_gyro_bias_locked_x = true;
+                }
+            }
+        }
+        rref_gyro.x = ref_value_f - rref_gyro_bias.x;
+        rref_gyro_mask |= 1;
+        if (rref_gyro_mask == 7) { rref_gyro_valid = true; }
+        break;
+    case RREF_QRAD:
+        if (!rref_gyro_bias_locked_y) {
+            rref_gyro_bias_sum.y    += ref_value_f;
+            rref_gyro_bias_sum_sq.y += ref_value_f * ref_value_f;
+            rref_gyro_bias_count_y++;
+            if (rref_gyro_bias_count_y >= GYRO_BIAS_SAMPLES) {
+                const float n    = rref_gyro_bias_count_y;
+                const float mean = rref_gyro_bias_sum.y / n;
+                const float var  = (rref_gyro_bias_sum_sq.y / n) - (mean * mean);
+                if (var > GYRO_BIAS_STDDEV_LIMIT * GYRO_BIAS_STDDEV_LIMIT) {
+                    rref_gyro_bias_sum.y    = 0;
+                    rref_gyro_bias_sum_sq.y = 0;
+                    rref_gyro_bias_count_y  = 0;
+                    rref_gyro_bias_rejects++;
+                } else {
+                    rref_gyro_bias.y = mean;
+                    rref_gyro_bias_locked_y = true;
+                }
+            }
+        }
+        rref_gyro.y = ref_value_f - rref_gyro_bias.y;
+        rref_gyro_mask |= 2;
+        if (rref_gyro_mask == 7) { rref_gyro_valid = true; }
+        break;
+    case RREF_RRAD:
+        if (!rref_gyro_bias_locked_z) {
+            rref_gyro_bias_sum.z    += ref_value_f;
+            rref_gyro_bias_sum_sq.z += ref_value_f * ref_value_f;
+            rref_gyro_bias_count_z++;
+            if (rref_gyro_bias_count_z >= GYRO_BIAS_SAMPLES) {
+                const float n    = rref_gyro_bias_count_z;
+                const float mean = rref_gyro_bias_sum.z / n;
+                const float var  = (rref_gyro_bias_sum_sq.z / n) - (mean * mean);
+                if (var > GYRO_BIAS_STDDEV_LIMIT * GYRO_BIAS_STDDEV_LIMIT) {
+                    rref_gyro_bias_sum.z    = 0;
+                    rref_gyro_bias_sum_sq.z = 0;
+                    rref_gyro_bias_count_z  = 0;
+                    rref_gyro_bias_rejects++;
+                } else {
+                    rref_gyro_bias.z = mean;
+                    rref_gyro_bias_locked_z = true;
+                }
+            }
+        }
+        rref_gyro.z = ref_value_f - rref_gyro_bias.z;
+        rref_gyro_mask |= 4;
+        if (rref_gyro_mask == 7) { rref_gyro_valid = true; }
+        // Print the locked bias once, after all three axes finish calibrating.
+        if (!rref_gyro_bias_reported && rref_gyro_bias_locked_x
+            && rref_gyro_bias_locked_y && rref_gyro_bias_locked_z) {
+            ::printf("XPlane gyro bias locked (%u samples/axis, %u windows rejected): "
+                     "X=%.4f Y=%.4f Z=%.4f rad/s\n",
+                     (unsigned)GYRO_BIAS_SAMPLES,
+                     (unsigned)rref_gyro_bias_rejects,
+                     (double)rref_gyro_bias.x,
+                     (double)rref_gyro_bias.y,
+                     (double)rref_gyro_bias.z);
+            rref_gyro_bias_reported = true;
+        }
+        break;
+    case RREF_GAXIL:
+        rref_accel.x = ref_value_f;
+        rref_accel_mask |= 1;
+        if (rref_accel_mask == 7) { rref_accel_valid = true; }
+        break;
+    case RREF_GSIDE:
+        rref_accel.y = ref_value_f;
+        rref_accel_mask |= 2;
+        if (rref_accel_mask == 7) { rref_accel_valid = true; }
+        break;
+    case RREF_GNRML:
+        rref_accel.z = ref_value_f;
+        rref_accel_mask |= 4;
+        if (rref_accel_mask == 7) { rref_accel_valid = true; }
         break;
     }
 }
@@ -879,20 +1032,34 @@ void XPlane::send_drefs(const struct sitl_input &input)
         return true;
     };
 
-    // Round-robin: advance to next primary (non-FIXED, non-secondary) DRef.
-    // Primaries are sent one per call; their paired secondary is sent atomically in the same slot.
-    // This caps outbound bandwidth to one DREF packet (~509 bytes) per scheduler tick, keeping
-    // the PPP link at 115200 baud from overflowing.
+#if HAL_BOARD_SITL
+    // SITL (x86/UDP): no PPP bandwidth limit — send every primary DREF that changed.
+    // A quad needs all 4 motor DREFs fresh every scheduler tick (100 Hz) for stable
+    // attitude control. Round-robin at 25 Hz is not sufficient.
+    for (auto *d = drefs; d; d = d->next) {
+        if (d->type == DRefType::FIXED || d->is_pair_secondary) {
+            continue;
+        }
+        try_send(d);
+        if (d->pair != nullptr) {
+            const float v = compute_dref(d->pair);
+            d->pair->last_sent = v;
+            send_dref(d->pair->name, v);
+        }
+    }
+#else
+    // Hardware (ChibiOS/PPP): round-robin one primary per call.
+    // Each DREF packet is 509 bytes; at 115200 baud (~10 KB/s) only one fits per tick.
     auto next_primary = [&](DRef *start) -> DRef* {
         DRef *d = start ? start->next : drefs;
-        if (d == nullptr) d = drefs;                 // wrap around
+        if (d == nullptr) d = drefs;
         DRef *begin = d;
         while (d != nullptr) {
             if (d->type != DRefType::FIXED && !d->is_pair_secondary) {
                 return d;
             }
             d = d->next ? d->next : drefs;
-            if (d == begin) break;                   // full lap, no primary found
+            if (d == begin) break;
         }
         return nullptr;
     };
@@ -901,19 +1068,18 @@ void XPlane::send_drefs(const struct sitl_input &input)
         dref_cursor = next_primary(nullptr);
     }
     if (dref_cursor == nullptr) {
-        return;  // no non-FIXED primary DREFs
+        return;
     }
 
-    // Send the current primary slot (and its pair atomically, if any).
     try_send(dref_cursor);
     if (dref_cursor->pair != nullptr) {
-        // Force-send pair even if within deadband to keep both surfaces in lock-step.
         const float v = compute_dref(dref_cursor->pair);
         dref_cursor->pair->last_sent = v;
         send_dref(dref_cursor->pair->name, v);
     }
 
     dref_cursor = next_primary(dref_cursor);
+#endif
 }
 
 
@@ -964,6 +1130,14 @@ void XPlane::request_dref(const char *name, uint8_t code, uint32_t rate)
 void XPlane::request_drefs(void)
 {
     request_dref("sim/version/xplane_internal_version", RREF_VERSION, 1);
+    // Body angular rates — same DREFs PX4xplane reads; bypasses DATA@ row-16 ambiguity
+    request_dref("sim/flightmodel/position/Prad",  RREF_PRAD,  100);
+    request_dref("sim/flightmodel/position/Qrad",  RREF_QRAD,  100);
+    request_dref("sim/flightmodel/position/Rrad",  RREF_RRAD,  100);
+    // Body accelerations — same DREFs PX4xplane reads; bypasses DATA@ row-4 ambiguity
+    request_dref("sim/flightmodel/forces/g_axil",  RREF_GAXIL, 100);
+    request_dref("sim/flightmodel/forces/g_side",  RREF_GSIDE, 100);
+    request_dref("sim/flightmodel/forces/g_nrml",  RREF_GNRML, 100);
 }
 
 
@@ -973,11 +1147,11 @@ void XPlane::request_drefs(void)
 void XPlane::update(const struct sitl_input &input)
 {
     if (receive_data()) {
-        // Limit DREF sends to 25 Hz to avoid saturating PPP link.
-        // Each DREF packet is 509 bytes; at 50 Hz with 3 DREFs that is ~76 KB/s
-        // which overflows a 115200-baud PPP buffer (ENOBUFS).
+        // Send motor DREFs every physics frame (local UDP has plenty of bandwidth).
+        // The 40 ms limit was for PPP serial links; local loopback can handle 50 Hz
+        // at ~76 KB/s without issue.  Tighter loop = faster actuator response.
         uint32_t now_ms = AP_HAL::millis();
-        if (now_ms - last_dref_ms >= 40) {
+        if (now_ms - last_dref_ms >= 10) {
             last_dref_ms = now_ms;
             send_drefs(input);
         }

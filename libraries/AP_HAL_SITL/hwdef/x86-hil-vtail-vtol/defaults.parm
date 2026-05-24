@@ -35,9 +35,11 @@ RC_OVERRIDE_TIME -1
 # ── Servo output functions ────────────────────────────────────────────────────
 # Fixed-wing surfaces (CH1-CH4)
 SERVO1_FUNCTION 4    # Aileron
-SERVO2_FUNCTION 80   # Vtail_right  (elevator - rudder) * MIXING_GAIN
-SERVO3_FUNCTION 70   # Throttle     forward pusher motor → engine[4]
-SERVO4_FUNCTION 79   # Vtail_left   (elevator + rudder) * MIXING_GAIN
+SERVO2_FUNCTION  80  # Vtail_right  (elevator - rudder) * MIXING_GAIN
+SERVO2_REVERSED  1
+SERVO3_FUNCTION  70  # Throttle     forward pusher motor → engine[4]
+SERVO4_FUNCTION  79  # Vtail_left   (elevator + rudder) * MIXING_GAIN
+SERVO4_REVERSED  1
 
 # Quad lift motors (CH5-CH8) — H-frame
 SERVO5_FUNCTION 33   # Motor1  front-right  CW
@@ -69,6 +71,55 @@ Q_M_THST_EXPO  0.65
 
 # Transition: descend to QHOVER below this airspeed (m/s)
 Q_ASSIST_SPEED 12
+
+# ── Scheduler ────────────────────────────────────────────────────────────────
+SCHED_LOOP_RATE 50
+
+# ── INS filters ──────────────────────────────────────────────────────────────
+INS_GYRO_FILTER  20
+INS_ACCEL_FILTER 20
+
+# ── Roll rate controller ──────────────────────────────────────────────────────
+RLL_RATE_P       0.08
+RLL_RATE_I       0.15
+RLL_RATE_D       0
+RLL_RATE_FF      0.345
+RLL_RATE_FLTD    12
+RLL_RATE_IMAX    0.666
+RLL2SRV_TCONST   0.5
+RLL2SRV_RMAX     0
+
+# ── Pitch rate controller ─────────────────────────────────────────────────────
+PTCH_RATE_P      0.04
+PTCH_RATE_I      0.15
+PTCH_RATE_D      0
+PTCH_RATE_FF     0.345
+PTCH_RATE_FLTD   12
+PTCH_RATE_IMAX   0.666
+PTCH2SRV_TCONST  0.5
+PTCH2SRV_RMAX_UP 0
+PTCH2SRV_RMAX_DN 0
+PTCH2SRV_RLL     1
+
+# ── Flight envelope ───────────────────────────────────────────────────────────
+AIRSPEED_CRUISE   12
+AIRSPEED_MIN       9
+AIRSPEED_MAX      22
+TRIM_THROTTLE     45
+PTCH_LIM_MIN_DEG -25
+PTCH_LIM_MAX_DEG  20
+ROLL_LIMIT_DEG    45
+
+# ── Navigation ────────────────────────────────────────────────────────────────
+NAVL1_PERIOD   17
+NAVL1_DAMPING  0.75
+KFF_RDDRMIX    0.5
+
+# ── RC input channel mapping ──────────────────────────────────────────────────
+RCMAP_ROLL      1
+RCMAP_PITCH     2
+RCMAP_THROTTLE  3
+RCMAP_YAW       4
 
 # ── SITL speedup ─────────────────────────────────────────────────────────────
 SIM_SPEEDUP 1

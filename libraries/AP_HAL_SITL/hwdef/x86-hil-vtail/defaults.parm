@@ -47,14 +47,56 @@ SIM_SPEEDUP 1
 #   vtail_right (CH2) = (elevator - rudder) * MIXING_GAIN
 #   vtail_left  (CH4) = (elevator + rudder) * MIXING_GAIN
 SERVO1_FUNCTION 4    # Aileron
-SERVO2_FUNCTION 80   # Vtail_right  (elevator - rudder)
-SERVO3_FUNCTION 70   # Throttle
-SERVO4_FUNCTION 79   # Vtail_left   (elevator + rudder)
+SERVO2_FUNCTION  80  # Vtail_right  (elevator - rudder)
+SERVO2_REVERSED  1
+SERVO3_FUNCTION  70  # Throttle
+SERVO4_FUNCTION  79  # Vtail_left   (elevator + rudder)
+SERVO4_REVERSED  1
 
-# MIXING_GAIN 1.0: full servo travel for full stick input.
-# With direct surface mapping (no demix), range compensation is not needed — surfaces are
-# driven at full deflection. Keep below 1.0 only if saturation at combined elev+rud is a problem.
 MIXING_GAIN 1.0
+
+# ── Scheduler ────────────────────────────────────────────────────────────────
+SCHED_LOOP_RATE 50
+
+# ── INS filters ──────────────────────────────────────────────────────────────
+INS_GYRO_FILTER  20
+INS_ACCEL_FILTER 20
+
+# ── Roll rate controller ──────────────────────────────────────────────────────
+RLL_RATE_P       0.08
+RLL_RATE_I       0.15
+RLL_RATE_D       0
+RLL_RATE_FF      0.345
+RLL_RATE_FLTD    12
+RLL_RATE_IMAX    0.666
+RLL2SRV_TCONST   0.5
+RLL2SRV_RMAX     0
+
+# ── Pitch rate controller ─────────────────────────────────────────────────────
+PTCH_RATE_P      0.04
+PTCH_RATE_I      0.15
+PTCH_RATE_D      0
+PTCH_RATE_FF     0.345
+PTCH_RATE_FLTD   12
+PTCH_RATE_IMAX   0.666
+PTCH2SRV_TCONST  0.5
+PTCH2SRV_RMAX_UP 0
+PTCH2SRV_RMAX_DN 0
+PTCH2SRV_RLL     1
+
+# ── Flight envelope ───────────────────────────────────────────────────────────
+AIRSPEED_CRUISE   12
+AIRSPEED_MIN       9
+AIRSPEED_MAX      22
+TRIM_THROTTLE     45
+PTCH_LIM_MIN_DEG -25
+PTCH_LIM_MAX_DEG  20
+ROLL_LIMIT_DEG    45
+
+# ── Navigation ────────────────────────────────────────────────────────────────
+NAVL1_PERIOD   17
+NAVL1_DAMPING  0.75
+KFF_RDDRMIX    0.5
 
 # ── RC input channel mapping ──────────────────────────────────────────────────
 RCMAP_ROLL      1
