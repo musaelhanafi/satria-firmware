@@ -384,11 +384,6 @@ MAV_RESULT GCS_MAVLINK_Sub::handle_command_int_do_reposition(const mavlink_comma
         return MAV_RESULT_DENIED;
     }
 
-    // sanity check location
-    if (!check_latlng(packet.x, packet.y)) {
-        return MAV_RESULT_DENIED;
-    }
-
     Location request_location;
     if (!location_from_command_t(packet, request_location)) {
         return MAV_RESULT_DENIED;
@@ -823,11 +818,10 @@ uint8_t GCS_MAVLINK_Sub::high_latency_tgt_heading() const
     return 0;      
 }
     
-uint16_t GCS_MAVLINK_Sub::high_latency_tgt_dist() const
+uint16_t GCS_MAVLINK_Sub::high_latency_tgt_dist_dam() const
 {
-    // return units are dm
     if (sub.control_mode == Mode::Number::AUTO || sub.control_mode == Mode::Number::GUIDED) {
-        return MIN(sub.wp_nav.get_wp_distance_to_destination_cm() * 0.001, UINT16_MAX);
+        return MIN(static_cast<uint16_t>(sub.wp_nav.get_wp_distance_to_destination_cm() * 1e-3), UINT16_MAX);
     }
     return 0;
 }

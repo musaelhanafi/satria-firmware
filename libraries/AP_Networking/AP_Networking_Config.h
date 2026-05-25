@@ -39,6 +39,14 @@
 #define AP_NETWORKING_BACKEND_SITL (AP_NETWORKING_BACKEND_DEFAULT_ENABLED && (CONFIG_HAL_BOARD == HAL_BOARD_SITL))
 #endif
 
+// optional Linux TAP-device backend for SITL; bridges the lwIP stack of a
+// SITL build to a host TAP interface so developer tools (browsers, curl,
+// etc.) can reach lwIP-served sockets. Disabled by default; enable in a
+// per-board hwdef (e.g. sitl_periph_PPP) when you want host-side reachability.
+#ifndef AP_NETWORKING_BACKEND_SITL_TUN
+#define AP_NETWORKING_BACKEND_SITL_TUN 0
+#endif
+
 #ifndef AP_NETWORKING_SOCKETS_ENABLED
 #define AP_NETWORKING_SOCKETS_ENABLED AP_NETWORKING_ENABLED
 #endif
@@ -50,11 +58,12 @@
 // we have no control from this scope. For example, Linux systems (including SITL) have
 // their own DHCP client running but we have no control over it.
 // PPP is included because ArduPilot proposes the IPCP local address (via
-// ppp_set_ipcp_ouraddr) — so NET_IPADDR0-3 must exist for PPP builds too.
+// ppp_set_ipcp_ouraddr) — so NET_IPADDR0-3 must exist for PPP builds too,
+// on both ChibiOS (fmuv3-hil-ppp) and SITL (sitl_periph_PPP) backends.
 #define AP_NETWORKING_CONTROLS_HOST_IP_SETTINGS_ENABLED (AP_NETWORKING_BACKEND_CHIBIOS || AP_NETWORKING_BACKEND_PPP)
 #endif
 
-#define AP_NETWORKING_NEED_LWIP (AP_NETWORKING_BACKEND_CHIBIOS || AP_NETWORKING_BACKEND_PPP)
+#define AP_NETWORKING_NEED_LWIP (AP_NETWORKING_BACKEND_CHIBIOS || AP_NETWORKING_BACKEND_PPP || AP_NETWORKING_BACKEND_SITL_TUN)
 
 // ---------------------------
 // IP Features
