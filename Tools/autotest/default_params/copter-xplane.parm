@@ -13,29 +13,67 @@ SERVO2_FUNCTION     34
 SERVO3_FUNCTION     35
 SERVO4_FUNCTION     36
 
-# --- AHRS: use SIM backend (direct X-Plane quaternion, zero EKF lag) ---
-AHRS_EKF_TYPE       10
+# --- AHRS: use EKF3 (Kalman) instead of SITL passthrough ---
+# Switched from AHRS_EKF_TYPE=10 (SITL backend, zero EKF lag) to 3 (EKF3).
+# Passthrough gave a clean attitude but the rate controller still read raw
+# gyro through AP_AHRS::get_gyro_latest() — meaning every X-Plane physics
+# transient (and any post-cal gyro drift) hit the rate PID unfiltered. EKF3
+# returns bias-corrected, innovation-gated gyro to the same call, which is
+# the same property that makes PX4 stable on X-Plane sensor data.
+AHRS_EKF_TYPE       3
 EK3_ENABLE          1
 EK2_ENABLE          0
+
+# --- EKF3 tolerances tuned for X-Plane SITL ---
+# X-Plane delivers ~80 Hz RREF gyro/accel + ~30 Hz GPS. Default EKF3 noise
+# values assume real MEMS at 400 Hz and a real GPS; loosen the input noise
+# and let bias states track faster so convergence happens in seconds, not
+# the minute-plus you'd see with hardware defaults.
+EK3_GYRO_P_NSE      0.03      # default 0.015 — accept the bridge IIR's residual noise
+EK3_ACC_P_NSE       0.50      # default 0.35
+EK3_ABIAS_P_NSE     0.005     # default 0.003 — faster accel-bias tracking
+EK3_GBIAS_P_NSE     1.0e-4    # default 1.0e-5 — faster gyro-bias tracking
+EK3_VELNE_M_NSE     0.5       # GPS NE velocity is clean in SITL
+EK3_VELD_M_NSE      0.7
+EK3_POSNE_M_NSE     1.0
+EK3_ALT_M_NSE       1.0
+EK3_YAW_M_NSE       0.3       # mag heading noise
+EK3_MAG_CAL         3         # copter default: heading on ground, 3-axis after first climb
+EK3_CHECK_SCALE     100       # disable nav check; SITL GPS is perfect
+EK3_GPS_CHECK       0         # skip GPS sanity-check on init
+EK3_FLOW_USE        0         # no optical flow in this setup
 
 # --- Sensors: SITL backends ---
 GPS1_TYPE           100
 
 # --- Compass: one SITL instance ---
+# SITL ships with SIM_MAG{1..6}_DEVID non-zero by default → 6 compass
+# instances are created. EKF3's tryChangeCompass() then cycles through them
+# whenever the mag innovation gate fires ("EKF3 IMU0 switching to compass N"
+# spam). Zero out all secondaries so compass.get_count() == 1 and the
+# switching code is short-circuited entirely.
 COMPASS_USE         1
 COMPASS_USE2        0
 COMPASS_USE3        0
 SIM_MAG2_DEVID      0
 SIM_MAG3_DEVID      0
+SIM_MAG4_DEVID      0
+SIM_MAG5_DEVID      0
+SIM_MAG6_DEVID      0
 
 # --- Safety / arming ---
 BRD_SAFETY_DEFLT    0
-# 0 = disable all pre-arm checks (standard SITL practice). Even with sensor
-# cal data below set to look "calibrated," ArduCopter applies additional
-# consistency checks (accel inconsistency, gyro rate vs loop rate) that
-# fail in SITL with X-Plane bridge sample rates. ARMING_CHECK=0 is the
-# clean way out. Set to 1 to re-enable for real-hardware-like testing.
-ARMING_CHECK        0
+# ARMING_CHECK was renamed to ARMING_SKIPCHK in 4.7 with INVERTED semantics:
+#   ARMING_CHECK = 0   meant "skip all"   (old)
+#   ARMING_SKIPCHK = -1 means "skip all"  (new, all bits set)
+# On a fresh EEPROM, the old name is silently ignored. Use the new name.
+# Also explicitly disable the WMM mag-field XY/Z arming check
+# (ARMING_MAGTHRESH=0). With AHRS_EKF_TYPE=3 (EKF3) running, that check
+# compares compass_field rotated by EKF3's body-to-NED estimate against the
+# WMM expected field; before EKF3's yaw converges (~5 s) the rotation is
+# off and the check fires with "xy diff:>100".
+ARMING_SKIPCHK      -1
+ARMING_MAGTHRESH    0
 ARMING_REQUIRE      1
 
 # --- Sensor calibration policy ---
@@ -109,27 +147,41 @@ MOT_SPIN_MIN        0.15
 MOT_THST_EXPO       0.65
 MOT_THST_HOVER      0.65
 MOT_HOVER_LEARN     2
+MOT_SPOOL_TIME      0.5     # smooth spool-up matching PX4 MPC_SPOOLUP_TIME
+                            # (AC default is 0.5 s; explicit for clarity)
 
 # --- Angle controller ---
 ATC_ANG_RLL_P       4.5
 ATC_ANG_PIT_P       4.5
 ATC_ANG_YAW_P       4.5
 
+# --- STABILIZE-mode feel: PX4 STABILIZED parity ---
+# Shape stick → setpoint response so AC's STABILIZE behaves like PX4's
+# STABILIZED. Default AC values are usable but feel snappier than PX4.
+ATC_INPUT_TC        0.15      # time-constant for stick→attitude smoothing
+                              # (PX4 has similar shaping via MPC_MAN_TILT_TAU)
+ACRO_Y_RATE         40        # max yaw rate from stick (deg/s); matches
+                              # PX4 default MPC_MAN_Y_MAX = 40 deg/s
+
 # --- Roll rate PID ---
-# D=0: X-Plane round-trip latency (~1 frame) makes derivative unstable on stale RREF data.
+# D was 0 because raw gyro through AHRS_EKF_TYPE=10 (passthrough) carried
+# X-Plane round-trip jitter and a differentiated signal blew up. Switching
+# to EKF3 (AHRS_EKF_TYPE=3 above) feeds the rate loop a Kalman-smoothed
+# gyro, so a small D becomes useful for damping — paired with a tighter
+# D-term LPF (5 Hz) to kill any residual high-freq content.
 ATC_RAT_RLL_P       0.100
 ATC_RAT_RLL_I       0.050
-ATC_RAT_RLL_D       0.000
+ATC_RAT_RLL_D       0.002
 ATC_RAT_RLL_FF      0.000
-ATC_RAT_RLL_FLTD    10.0
+ATC_RAT_RLL_FLTD    5.0
 ATC_RAT_RLL_IMAX    0.5
 
 # --- Pitch rate PID ---
 ATC_RAT_PIT_P       0.100
 ATC_RAT_PIT_I       0.050
-ATC_RAT_PIT_D       0.000
+ATC_RAT_PIT_D       0.002
 ATC_RAT_PIT_FF      0.000
-ATC_RAT_PIT_FLTD    10.0
+ATC_RAT_PIT_FLTD    5.0
 ATC_RAT_PIT_IMAX    0.5
 
 # --- Yaw rate PID ---

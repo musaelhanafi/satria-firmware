@@ -562,6 +562,38 @@
           "default_params/quadplane.parm",
           "default_params/plane-vtail.parm"
         ]
+      },
+      "xplane": {
+        "waf_target": "bin/arduplane",
+        "default_params_filename": [
+          "models/plane.parm",
+          "default_params/plane-xplane.parm"
+        ],
+        "external": true
+      },
+      "xplane-vtail": {
+        "waf_target": "bin/arduplane",
+        "default_params_filename": [
+          "models/plane.parm",
+          "default_params/plane-vtail-xplane.parm"
+        ],
+        "external": true
+      },
+      "xplane-elevon": {
+        "waf_target": "bin/arduplane",
+        "default_params_filename": [
+          "models/plane.parm",
+          "default_params/plane-elevon-xplane.parm"
+        ],
+        "external": true
+      },
+      "xplane-vtail-vtol": {
+        "waf_target": "bin/arduplane",
+        "default_params_filename": [
+          "default_params/quadplane.parm",
+          "default_params/plane-vtail-vtol-xplane.parm"
+        ],
+        "external": true
       }
     }
   },

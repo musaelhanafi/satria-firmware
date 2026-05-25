@@ -598,6 +598,21 @@ bool XPlane::receive_data(void)
                 gyro.y = data[1];
                 gyro.z = data[3];
             }
+            // Hold gyro at zero pre-arm. ArduCopter's boot gyro cal needs
+            // consecutive 250 ms windowed averages to agree within 0.1°/s
+            // ([AP_InertialSensor.cpp GYRO_INIT_MAX_DIFF_DPS=0.1f]). Even
+            // after the bridge's per-axis bias lock, the IIR-filtered
+            // residual jitter from X-Plane physics is ~0.2–0.3°/s RMS —
+            // comfortably above the cal threshold, so AC's cal still fails
+            // ("Gyros not calibrated", diff > 0.1°/s). The vehicle is
+            // physically stationary from boot until arm, so the *true* gyro
+            // is zero throughout; publishing exactly zero lets AC's cal
+            // converge trivially with offset = 0. The moment we arm, the
+            // already-settled IIR (which kept tracking real gyro internally)
+            // flows live to the rate controller — no transient.
+            if (!hal.util->get_soft_armed()) {
+                gyro.zero();
+            }
             // we only count gyro data towards data counts
             ret = true;
             break;

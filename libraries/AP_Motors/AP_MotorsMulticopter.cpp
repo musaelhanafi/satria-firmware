@@ -254,6 +254,7 @@ const AP_Param::GroupInfo AP_MotorsMulticopter::var_info[] = {
     // @User: Advanced
     AP_GROUPINFO("IDLE_SEC", 45, AP_MotorsMulticopter, _idle_time_delay_s, 0),
 
+
     AP_GROUPEND
 };
 
