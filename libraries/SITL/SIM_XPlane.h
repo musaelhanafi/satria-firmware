@@ -97,6 +97,10 @@ private:
         VTAIL_ELEVATOR  = 5,  // recovers elevator from two vtail channels (right+left)/2
         VTAIL_RUDDER    = 6,  // recovers rudder    from two vtail channels (left-right)/2
         RUNNING         = 7,  // outputs range when armed and PWM > min, 0 otherwise (for ENGN_running)
+        QUAD_ROLL     = 8,    // inverse X-frame mixer → roll     [-range, +range]
+        QUAD_PITCH    = 9,    // inverse X-frame mixer → pitch    [-range, +range] (+nose-up)
+        QUAD_THROTTLE = 10,   // inverse X-frame mixer → throttle [0, range]
+        QUAD_YAW      = 11,   // inverse X-frame mixer → yaw      [-range, +range]
     };
 
     struct DRef {

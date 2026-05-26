@@ -1,0 +1,39 @@
+# XPlane DREF map for X-frame quadcopter — joystick-override mode.
+#
+# Uses the inverse X-frame mixer built into SIM_XPlane (quad_roll / quad_pitch /
+# quad_throttle / quad_yaw types) to demix the four motor channels back to
+# roll/pitch/throttle/yaw, then drives X-Plane's joystick and collective-throttle
+# datarefs directly.  Works with any standard X-Plane rotorcraft or multicopter
+# aircraft — no custom Plane Maker motor layout required.
+#
+# ArduCopter X-frame motor order (AP_MotorsMatrix):
+#   CH1 = Motor 1  +45°  front-right  CCW
+#   CH2 = Motor 2 -135°  back-left    CCW
+#   CH3 = Motor 3  -45°  front-left    CW
+#   CH4 = Motor 4 +135°  back-right    CW
+#
+# Inverse mixer used internally:
+#   T = ( n1+n2+n3+n4)/4            throttle  [0..1]
+#   R = (-n1+n2+n3-n4)/4  ×2 → [-1,1]   roll    (+right)
+#   P = (-n1+n2-n3+n4)/4  ×2 → [-1,1]   pitch   (+nose-up, pilot conv.)
+#   Y = ( n1+n2-n3-n4)/4  ×2 → [-1,1]   yaw     (+right)
+
+{
+    "settings" : { "debug" : 0 },
+
+    # Disable X-Plane's own joystick, throttle and flight-control inputs
+    "sim/operation/override/override_joystick"      : { "type" : "fixed", "value" : 1 },
+    "sim/operation/override/override_throttles"     : { "type" : "fixed", "value" : 1 },
+    "sim/operation/override/override_flightcontrol" : { "type" : "fixed", "value" : 1 },
+
+    # Demixed attitude commands → X-Plane yoke axes
+    "sim/joystick/yoke_roll_ratio"    : { "type" : "quad_roll",     "range" : 1 },
+    "sim/joystick/yoke_pitch_ratio"   : { "type" : "quad_pitch",    "range" : 1 },
+    "sim/joystick/yoke_heading_ratio" : { "type" : "quad_yaw",      "range" : 1 },
+
+    # Collective throttle (single value drives all engines)
+    "sim/cockpit2/engine/actuators/throttle_ratio[0]" : { "type" : "quad_throttle", "range" : 1 },
+    "sim/cockpit2/engine/actuators/throttle_ratio[1]" : { "type" : "quad_throttle", "range" : 1 },
+    "sim/cockpit2/engine/actuators/throttle_ratio[2]" : { "type" : "quad_throttle", "range" : 1 },
+    "sim/cockpit2/engine/actuators/throttle_ratio[3]" : { "type" : "quad_throttle", "range" : 1 }
+}

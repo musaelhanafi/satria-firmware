@@ -52,6 +52,7 @@ extern const AP_HAL::HAL& hal;
 #define XPLANE_JSON_ELEVON   "xplane_elevon.json"
 #define XPLANE_JSON_VTAIL    "xplane_vtail.json"
 #define XPLANE_JSON_VTAILVTOL "xplane_vtail_vtol.json"
+#define XPLANE_JSON_QUAD_JOY "xplane_quad_joy.json"
 
 // DATA@ frame types. Thanks to TauLabs xplanesimulator.h
 // (which strangely enough acknowledges APM as a source!)
@@ -165,6 +166,7 @@ XPlane::XPlane(const char *frame_str) :
 
     const bool vtail = strstr(frame_str, "-vtail") != nullptr;
     const bool vtol  = strstr(frame_str, "-vtol")  != nullptr;
+    const bool joy   = strstr(frame_str, "-joy")   != nullptr;
 
     const char *xplane_json;
     if (vtail && vtol) {
@@ -173,6 +175,8 @@ XPlane::XPlane(const char *frame_str) :
         xplane_json = XPLANE_JSON_VTAIL;
     } else if (elevons) {
         xplane_json = XPLANE_JSON_ELEVON;
+    } else if (joy) {
+        xplane_json = XPLANE_JSON_QUAD_JOY;
     } else {
         xplane_json = XPLANE_JSON;
     }
@@ -200,11 +204,17 @@ void XPlane::add_dref(const char *name, DRefType type, const AP_JSON::value &dre
         d->fixed_value = dref.get("value").get<double>();
     } else {
         d->range = dref.get("range").get<double>();
-        d->channel = dref.get("channel").get<double>();
         d->invert = dref.contains("invert") && dref.get("invert").get<bool>();
-        if (d->type == DRefType::ELEVON_AILERON || d->type == DRefType::ELEVON_ELEVATOR ||
-            d->type == DRefType::VTAIL_ELEVATOR  || d->type == DRefType::VTAIL_RUDDER) {
-            d->channel2 = dref.get("channel2").get<double>();
+        const bool is_quad_type = (d->type == DRefType::QUAD_ROLL     ||
+                                   d->type == DRefType::QUAD_PITCH    ||
+                                   d->type == DRefType::QUAD_THROTTLE ||
+                                   d->type == DRefType::QUAD_YAW);
+        if (!is_quad_type) {
+            d->channel = dref.get("channel").get<double>();
+            if (d->type == DRefType::ELEVON_AILERON || d->type == DRefType::ELEVON_ELEVATOR ||
+                d->type == DRefType::VTAIL_ELEVATOR  || d->type == DRefType::VTAIL_RUDDER) {
+                d->channel2 = dref.get("channel2").get<double>();
+            }
         }
     }
     // add to linked list
@@ -322,6 +332,14 @@ bool XPlane::load_dref_map(const char *map_json)
                 add_dref(label, DRefType::VTAIL_RUDDER, d);
             } else if (strcmp(type_s, "running") == 0) {
                 add_dref(label, DRefType::RUNNING, d);
+            } else if (strcmp(type_s, "quad_roll") == 0) {
+                add_dref(label, DRefType::QUAD_ROLL, d);
+            } else if (strcmp(type_s, "quad_pitch") == 0) {
+                add_dref(label, DRefType::QUAD_PITCH, d);
+            } else if (strcmp(type_s, "quad_throttle") == 0) {
+                add_dref(label, DRefType::QUAD_THROTTLE, d);
+            } else if (strcmp(type_s, "quad_yaw") == 0) {
+                add_dref(label, DRefType::QUAD_YAW, d);
             } else {
                 ::printf("Invalid dref type %s for %s in %s", type_s, label, map_filename);
             }
@@ -1025,6 +1043,41 @@ void XPlane::send_drefs(const struct sitl_input &input)
             const SRV_Channel *ch = SRV_Channels::srv_channel(d->channel - 1);
             const float mn = ch ? (float)ch->get_output_min() : 1000.0f;
             v = (hal.util->get_soft_armed() && input.servos[d->channel-1] > mn) ? d->range : 0.0f;
+            break;
+        }
+        case DRefType::QUAD_ROLL:
+        case DRefType::QUAD_PITCH:
+        case DRefType::QUAD_THROTTLE:
+        case DRefType::QUAD_YAW: {
+            // Inverse ArduCopter X-frame mixer (AP_MotorsMatrix, FRAME_CLASS=1 FRAME_TYPE=1):
+            //   CH1=front-right/CCW  CH2=back-left/CCW  CH3=front-left/CW  CH4=back-right/CW
+            // Forward mixer:  M1=T-R+P+Y  M2=T+R-P+Y  M3=T+R+P-Y  M4=T-R-P-Y
+            // Inverse:  T=(n1+n2+n3+n4)/4  R=(-n1+n2+n3-n4)/4
+            //           P=(-n1+n2-n3+n4)/4 (pilot +nose-up)  Y=(n1+n2-n3-n4)/4
+            float n[4];
+            for (int i = 0; i < 4; i++) {
+                const SRV_Channel *ch = SRV_Channels::srv_channel(i);
+                const float mn   = ch ? (float)ch->get_output_min() : 1000.0f;
+                const float mx   = ch ? (float)ch->get_output_max() : 2000.0f;
+                const float span = mx - mn;
+                n[i] = hal.util->get_soft_armed() ? (input.servos[i] - mn) / span : 0.0f;
+                n[i] = constrain_float(n[i], 0.0f, 1.0f);
+            }
+            const float T =  (n[0] + n[1] + n[2] + n[3]) * 0.25f;
+            const float R = (-n[0] + n[1] + n[2] - n[3]) * 0.25f;  // [-0.5, +0.5]
+            const float P = (-n[0] + n[1] - n[2] + n[3]) * 0.25f;  // pilot +nose-up
+            const float Y =  (n[0] + n[1] - n[2] - n[3]) * 0.25f;
+            float raw;
+            switch (d->type) {
+            case DRefType::QUAD_ROLL:     raw = R * 2.0f; break;  // scale to [-1, +1]
+            case DRefType::QUAD_PITCH:    raw = P * 2.0f; break;
+            case DRefType::QUAD_YAW:      raw = Y * 2.0f; break;
+            case DRefType::QUAD_THROTTLE: raw = T;         break;  // already [0, 1]
+            default:                      raw = 0.0f;      break;
+            }
+            if (d->invert) { raw = -raw; }
+            const float lo = (d->type == DRefType::QUAD_THROTTLE) ? 0.0f : -d->range;
+            v = constrain_float(raw * d->range, lo, d->range);
             break;
         }
         default:
