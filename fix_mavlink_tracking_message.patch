@@ -1,8 +1,21 @@
+From 1430834b2d335ade9dda6795978f372a273c048d Mon Sep 17 00:00:00 2001
+From: Tata Taufik <tata.taufik@gmail.com>
+Date: Tue, 26 May 2026 15:57:29 +0700
+Subject: [PATCH] ardupilotmega: add TRACKING_MESSAGE (id 11045)
+
+Normalised tracking error sent from companion computer to autopilot.
+Fields: time_usec (us), errorx [-1,1], errory [-1,1].
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ message_definitions/v1.0/ardupilotmega.xml | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
 diff --git a/message_definitions/v1.0/ardupilotmega.xml b/message_definitions/v1.0/ardupilotmega.xml
-index 3aed2447..be941666 100644
+index 524e42b1..adb9e555 100644
 --- a/message_definitions/v1.0/ardupilotmega.xml
 +++ b/message_definitions/v1.0/ardupilotmega.xml
-@@ -2076,6 +2076,12 @@
+@@ -2091,6 +2091,12 @@
        <field type="uint16_t[4]" name="rpm" units="rpm">RPM (eRPM).</field>
        <field type="uint16_t[4]" name="count">count of telemetry packets received (wraps at 65535).</field>
      </message>
@@ -15,3 +28,6 @@ index 3aed2447..be941666 100644
      <message id="11060" name="NAMED_VALUE_STRING">
        <description>Send a key-value pair as string. The use of this message is discouraged for normal packets, but a quite efficient way for testing new messages and getting experimental debug output.</description>
        <field type="uint32_t" name="time_boot_ms" units="ms">Timestamp (time since system boot).</field>
+-- 
+2.50.1 (Apple Git-155)
+
