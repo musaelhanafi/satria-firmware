@@ -670,6 +670,20 @@ bool XPlane::receive_data(void)
                 accel_body.x =  data[6] * GRAVITY_MSS;
                 accel_body.y =  data[7] * GRAVITY_MSS;
             }
+            // Hold accel at the stationary specific-force vector pre-arm:
+            //   FRD body, level → accel = (0, 0, −g).
+            // Same rationale as the gyro gate: ArduCopter's gyro cal aborts a
+            // 250 ms window when |Δaccel| > 0.2 m/s², and X-Plane's raw accel
+            // jitter (plus SITL noise injection) easily breaches that
+            // threshold. Pre-arm we freeze accel exactly — every cal window
+            // sees |Δaccel| ≈ 0 → cal completes on the first iteration.
+            // Once armed, the bridge's filtered/calibrated accel flows live
+            // for use by the EKF + rate controller.
+            if (!hal.util->get_soft_armed()) {
+                accel_body.x = 0.f;
+                accel_body.y = 0.f;
+                accel_body.z = -GRAVITY_MSS;
+            }
             break;
 
         case PropPitch: {

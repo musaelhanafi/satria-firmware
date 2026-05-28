@@ -26,12 +26,30 @@
     "sim/operation/override/override_throttles"     : { "type" : "fixed", "value" : 1 },
     "sim/operation/override/override_flightcontrol" : { "type" : "fixed", "value" : 1 },
 
+    # Engine run state — REQUIRED for the throttle inputs below to spin the
+    # rotor. Without ENGN_running=1, X-Plane keeps the engines OFF and any
+    # throttle dataref write is silently ignored. "running" type outputs 1
+    # when armed AND the corresponding motor channel is above min PWM.
+    "sim/flightmodel/engine/ENGN_running[0]" : { "type" : "running", "range" : 1, "channel" : 1 },
+    "sim/flightmodel/engine/ENGN_running[1]" : { "type" : "running", "range" : 1, "channel" : 2 },
+    "sim/flightmodel/engine/ENGN_running[2]" : { "type" : "running", "range" : 1, "channel" : 3 },
+    "sim/flightmodel/engine/ENGN_running[3]" : { "type" : "running", "range" : 1, "channel" : 4 },
+
     # Demixed attitude commands → X-Plane yoke axes
     "sim/joystick/yoke_roll_ratio"    : { "type" : "quad_roll",     "range" : 1 },
     "sim/joystick/yoke_pitch_ratio"   : { "type" : "quad_pitch",    "range" : 1 },
     "sim/joystick/yoke_heading_ratio" : { "type" : "quad_yaw",      "range" : 1 },
 
-    # Collective throttle (single value drives all engines)
+    # Collective throttle. Two paths in parallel — X-Plane consumes one or
+    # the other depending on the model's flight-model implementation:
+    #   ENGN_thro_use      = direct engine throttle command (rotor models)
+    #   throttle_ratio[]   = cockpit throttle-lever position (fixed-wing-ish)
+    # Setting both is harmless and increases compatibility across .acf models.
+    "sim/flightmodel/engine/ENGN_thro_use[0]" : { "type" : "quad_throttle", "range" : 1 },
+    "sim/flightmodel/engine/ENGN_thro_use[1]" : { "type" : "quad_throttle", "range" : 1 },
+    "sim/flightmodel/engine/ENGN_thro_use[2]" : { "type" : "quad_throttle", "range" : 1 },
+    "sim/flightmodel/engine/ENGN_thro_use[3]" : { "type" : "quad_throttle", "range" : 1 },
+
     "sim/cockpit2/engine/actuators/throttle_ratio[0]" : { "type" : "quad_throttle", "range" : 1 },
     "sim/cockpit2/engine/actuators/throttle_ratio[1]" : { "type" : "quad_throttle", "range" : 1 },
     "sim/cockpit2/engine/actuators/throttle_ratio[2]" : { "type" : "quad_throttle", "range" : 1 },
