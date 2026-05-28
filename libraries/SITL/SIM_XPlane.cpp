@@ -29,6 +29,7 @@
 #include <stdarg.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>   // clock_gettime(CLOCK_MONOTONIC) for wall-clock pacing in failed:
 
 #include <AP_HAL/AP_HAL.h>
 #include <AP_Filesystem/AP_Filesystem.h>
@@ -96,6 +97,23 @@ enum RREF {
     RREF_GAXIL   = 5,   // sim/flightmodel/forces/g_axil    — axial G (forward, Gs)
     RREF_GSIDE   = 6,   // sim/flightmodel/forces/g_side    — lateral G (right, Gs)
     RREF_GNRML   = 7,   // sim/flightmodel/forces/g_nrml    — normal G (up, Gs)
+    // Position / velocity / attitude / airspeed via RREF — matches PX4's
+    // SimulatorXPlane, which sources ALL state over RREF. Replaces the fragile
+    // DATA@/DSEL rows (slot-offset ambiguity + dependence on X-Plane's per-user
+    // "Data Output" config) that were destabilising ArduCopter's EKF.
+    RREF_LX      = 8,   // sim/flightmodel/position/local_x   (OpenGL east,  m)
+    RREF_LY      = 9,   // sim/flightmodel/position/local_y   (OpenGL up,    m)
+    RREF_LZ      = 10,  // sim/flightmodel/position/local_z   (OpenGL south, m)
+    RREF_VX      = 11,  // sim/flightmodel/position/local_vx  (east,  m/s)
+    RREF_VY      = 12,  // sim/flightmodel/position/local_vy  (up,    m/s)
+    RREF_VZ      = 13,  // sim/flightmodel/position/local_vz  (south, m/s)
+    RREF_LAT     = 14,  // sim/flightmodel/position/latitude  (deg)
+    RREF_LON     = 15,  // sim/flightmodel/position/longitude (deg)
+    RREF_ELEV    = 16,  // sim/flightmodel/position/elevation (m MSL)
+    RREF_THETA   = 17,  // sim/flightmodel/position/theta     (pitch, deg)
+    RREF_PHI     = 18,  // sim/flightmodel/position/phi       (roll,  deg)
+    RREF_PSI     = 19,  // sim/flightmodel/position/psi       (true heading, deg)
+    RREF_TAS     = 20,  // sim/flightmodel/position/true_airspeed (m/s)
 };
 
 static const uint8_t required_data[] {
@@ -655,16 +673,37 @@ bool XPlane::receive_data(void)
                                     + rref_accel_filt * (1.0f - SENSOR_LPF_ALPHA);
                 }
 
-                // Accel magnitude scaling DISABLED (2026-05-24).
-                // The X-Plane quad model reports |a| ≈ 7.74 m/s² stationary
-                // (not 9.81). The px4xplane plugin "corrects" this to 9.81 via
-                // magnitude scaling, which works in PX4. But ArduCopter's EKF3
-                // already had its accel-bias state silently compensating for
-                // the X-Plane offset — when we "fix" the magnitude upstream,
-                // the bias state becomes wrong and altitude estimate drifts.
-                // Verdict: trust the X-Plane raw magnitude, let EKF3 learn its
-                // own bias. Keep only the IIR low-pass smoothing.
-                accel_body = rref_accel_filt;
+                // Accel magnitude scaling (ported from PX4 SimulatorXPlane,
+                // publish_imu / AccelCalibration). The X-Plane quad reports
+                // |a| ≈ 7.74 m/s² stationary, not 9.81 — a ~21% deficit. This
+                // is a SCALE error, not a bias: it grows with true acceleration
+                // and exceeds EKF3's accel-bias clamp (~1 m/s²), so EKF3 cannot
+                // absorb it. Fed raw it corrupts the gravity/tilt and vertical
+                // velocity estimates → vehicle flips on takeoff (AngErr≈180).
+                // PX4 avoids this by normalising |a| to 1 g; do the same here.
+                // Measure the stationary magnitude once while disarmed (vehicle
+                // is on the ground = stationary), then rescale every sample.
+                if (!accel_calibrated && !hal.util->get_soft_armed()) {
+                    if (accel_cal_stationary_count < ACCEL_CAL_WAIT_SAMPLES) {
+                        accel_cal_stationary_count++;   // let the IIR settle first
+                    } else {
+                        accel_cal_sum_mag += rref_accel_filt.length();
+                        accel_cal_count++;
+                        if (accel_cal_count >= ACCEL_CAL_SAMPLES) {
+                            const float measured = accel_cal_sum_mag / accel_cal_count;
+                            if (measured > 0.1f) {
+                                accel_scale_factor = GRAVITY_MSS / measured;
+                                accel_calibrated = true;
+                                printf("X-Plane accel calibrated: |g|=%.4f m/s2 scale=%.4f (%.2f%%)\n",
+                                       measured, accel_scale_factor,
+                                       (accel_scale_factor - 1.0f) * 100.0f);
+                            }
+                        }
+                    }
+                }
+
+                // Normalise magnitude to 1 g (scale=1.0 until cal completes).
+                accel_body = rref_accel_filt * accel_scale_factor;
             } else {
                 accel_body.z = -data[5] * GRAVITY_MSS;
                 accel_body.x =  data[6] * GRAVITY_MSS;
@@ -736,6 +775,24 @@ bool XPlane::receive_data(void)
     // update data selection
     select_data();
 
+    // Prefer RREF-sourced state over the DATA@ rows. RREF is self-subscribed and
+    // immune to X-Plane "Data Output" slot/row ambiguity, so once each group is
+    // valid it is authoritative; the DATA@ rows remain only as a startup fallback
+    // (before RREF replies arrive) and to drive the frame/time tick. This is the
+    // PX4 SimulatorXPlane model: all FDM state comes from RREF.
+    if (rref_pos_valid) { pos = rref_pos_ned; }
+    if (rref_vel_valid) { velocity_ef = rref_vel_ned; }
+    if (rref_att_valid) { dcm.from_euler(rref_roll_rad, rref_pitch_rad, rref_yaw_rad); }
+    if (rref_geo_valid) {
+        loc.lat = rref_lat_deg * 1e7;
+        loc.lng = rref_lon_deg * 1e7;
+        loc.alt = rref_elev_m * 100.0f;
+    }
+    if (rref_airspeed_valid) {
+        airspeed = rref_airspeed_mps;
+        airspeed_pitot = airspeed;
+    }
+
     position = pos + position_zero;
     position.xy() += origin.get_distance_NE_double(home);
     update_position();
@@ -782,24 +839,129 @@ bool XPlane::receive_data(void)
     return ret;
         
 failed:
-    if (AP_HAL::millis() - last_data_time_ms > 200) {
-        // don't extrapolate beyond 0.2s
+    // True-disconnect cap. Wall-pacing of time advance is now handled in
+    // update() via wall_paced_time_advance(), which runs every tick regardless
+    // of which packet path receive_data took. This block stays just to do the
+    // dead-reckoning sensor extrapolation when no fresh packet arrived.
+    if (AP_HAL::millis() - last_data_time_ms > 30000) {
         return false;
     }
+    extrapolate_sensors(0.001f);
+    return false;
+}
 
-    // advance time by 1ms
-    frame_time_us = 1000;
-    float delta_time = frame_time_us * 1e-6f;
+/*
+  Advance simulated time by ≤1 ms wall-clock-paced, applying the latest
+  RREF-sourced state. Called from update() every tick so the simulated clock
+  tracks real time even when the bridge only receives RREF packets (which
+  return early from receive_data without touching time) or none at all. This
+  un-bottlenecks any SITL sensor that gates on AP_HAL::millis() — most
+  importantly the simulated GPS, whose is_healthy() check fails when the
+  observed average inter-arrival exceeds 215 ms.
+*/
+void XPlane::wall_paced_time_advance(void)
+{
+    struct timespec tp;
+    clock_gettime(CLOCK_MONOTONIC, &tp);
+    const uint64_t wall_now_us = uint64_t(tp.tv_sec) * 1000000ULL
+                               + uint64_t(tp.tv_nsec) / 1000ULL;
+    if (last_wall_extrap_us != 0 && wall_now_us - last_wall_extrap_us < 1000) {
+        // less than 1 ms of real time since the last advance — wait
+        return;
+    }
+    last_wall_extrap_us = wall_now_us;
 
-    time_now_us += frame_time_us;
+    // --- Apply RREF gyro to FDM `gyro` (mirrors AngularVelocities switch case) ---
+    // Previously the FDM gyro was only updated on DATA@ AngularVelocities row
+    // arrival (~2 Hz from X-Plane's DSEL), even though RREF Prad/Qrad/Rrad
+    // arrives at 100 Hz. ArduCopter's 200 Hz rate controller reading 2 Hz gyro
+    // is the prime suspect for the yaw runaway: by the time the controller
+    // sees real angular velocity, it has already commanded several rounds of
+    // correction based on stale data → positive feedback. Updating gyro every
+    // wall-ms closes that loop.
+    if (rref_gyro_valid) {
+        Vector3f gyro_raw = rref_gyro;   // bias-compensated in handle_rref()
+        if (!sensor_filt_initialized) {
+            rref_gyro_filt = gyro_raw;
+        } else {
+            rref_gyro_filt = gyro_raw * SENSOR_LPF_ALPHA
+                           + rref_gyro_filt * (1.0f - SENSOR_LPF_ALPHA);
+        }
+        gyro = rref_gyro_filt;
+    }
+    if (!hal.util->get_soft_armed()) {
+        // pre-arm gyro hold (matches the switch case)
+        gyro.zero();
+    }
 
-    extrapolate_sensors(delta_time);
-    
+    // --- Apply RREF accel to FDM `accel_body` (mirrors Gload switch case) ---
+    // Same staleness problem as gyro. Also runs the PX4-ported stationary
+    // magnitude calibration that normalises |a| ≈ 7.74 → 9.81 m/s².
+    if (rref_accel_valid) {
+        Vector3f accel_raw;
+        accel_raw.x = -rref_accel.x * GRAVITY_MSS;
+        accel_raw.y =  rref_accel.y * GRAVITY_MSS;
+        accel_raw.z = -rref_accel.z * GRAVITY_MSS;
+        if (!sensor_filt_initialized) {
+            rref_accel_filt = accel_raw;
+            sensor_filt_initialized = true;
+        } else {
+            rref_accel_filt = accel_raw * SENSOR_LPF_ALPHA
+                            + rref_accel_filt * (1.0f - SENSOR_LPF_ALPHA);
+        }
+        if (!accel_calibrated && !hal.util->get_soft_armed()) {
+            if (accel_cal_stationary_count < ACCEL_CAL_WAIT_SAMPLES) {
+                accel_cal_stationary_count++;
+            } else {
+                accel_cal_sum_mag += rref_accel_filt.length();
+                accel_cal_count++;
+                if (accel_cal_count >= ACCEL_CAL_SAMPLES) {
+                    const float measured = accel_cal_sum_mag / accel_cal_count;
+                    if (measured > 0.1f) {
+                        accel_scale_factor = GRAVITY_MSS / measured;
+                        accel_calibrated = true;
+                        printf("X-Plane accel calibrated: |g|=%.4f m/s2 scale=%.4f (%.2f%%)\n",
+                               measured, accel_scale_factor,
+                               (accel_scale_factor - 1.0f) * 100.0f);
+                    }
+                }
+            }
+        }
+        accel_body = rref_accel_filt * accel_scale_factor;
+    }
+    if (!hal.util->get_soft_armed()) {
+        // pre-arm accel hold (matches the switch case)
+        accel_body.x = 0.f;
+        accel_body.y = 0.f;
+        accel_body.z = -GRAVITY_MSS;
+    }
+
+    // --- Apply RREF state. `pos` is a local in receive_data() so we go
+    // straight to the base class `position`, matching the math in
+    // receive_data's finalisation: position = pos + position_zero, then add
+    // home NE offset.
+    if (rref_pos_valid) {
+        position = rref_pos_ned + position_zero;
+        position.xy() += origin.get_distance_NE_double(home);
+    }
+    if (rref_vel_valid) { velocity_ef = rref_vel_ned; }
+    if (rref_att_valid) {
+        dcm.from_euler(rref_roll_rad, rref_pitch_rad, rref_yaw_rad);
+    }
+    if (rref_airspeed_valid) {
+        airspeed = rref_airspeed_mps;
+        airspeed_pitot = airspeed;
+    }
+
+    // Advance time by exactly 1 ms wall-clock. Repeated calls from update()
+    // keep simulated time aligned with real time at 1 kHz resolution.
+    time_now_us += 1000;
+
     update_position();
     time_advance();
+    accel_earth = dcm * accel_body;
+    accel_earth.z += GRAVITY_MSS;
     update_mag_field_bf();
-    report.frame_count++;
-    return false;
 }
 
 /*
@@ -921,6 +1083,28 @@ void XPlane::handle_rref(const uint8_t *pkt, uint32_t len)
         rref_accel_mask |= 4;
         if (rref_accel_mask == 7) { rref_accel_valid = true; }
         break;
+
+    // --- Position (X-Plane OpenGL local frame: x=east, y=up, z=south) → NED ---
+    case RREF_LX: rref_pos_ned.y =  ref_value_f; rref_pos_mask |= 1; if (rref_pos_mask == 7) { rref_pos_valid = true; } break;
+    case RREF_LY: rref_pos_ned.z = -ref_value_f; rref_pos_mask |= 2; if (rref_pos_mask == 7) { rref_pos_valid = true; } break;
+    case RREF_LZ: rref_pos_ned.x = -ref_value_f; rref_pos_mask |= 4; if (rref_pos_mask == 7) { rref_pos_valid = true; } break;
+
+    // --- Velocity (same frame mapping; matches PX4: vel_n=-vz, vel_e=vx, vel_d=-vy) ---
+    case RREF_VX: rref_vel_ned.y =  ref_value_f; rref_vel_mask |= 1; if (rref_vel_mask == 7) { rref_vel_valid = true; } break;
+    case RREF_VY: rref_vel_ned.z = -ref_value_f; rref_vel_mask |= 2; if (rref_vel_mask == 7) { rref_vel_valid = true; } break;
+    case RREF_VZ: rref_vel_ned.x = -ref_value_f; rref_vel_mask |= 4; if (rref_vel_mask == 7) { rref_vel_valid = true; } break;
+
+    // --- Geodetic position (used for the home-reset reference) ---
+    case RREF_LAT:  rref_lat_deg = ref_value_f; rref_geo_mask |= 1; if (rref_geo_mask == 7) { rref_geo_valid = true; } break;
+    case RREF_LON:  rref_lon_deg = ref_value_f; rref_geo_mask |= 2; if (rref_geo_mask == 7) { rref_geo_valid = true; } break;
+    case RREF_ELEV: rref_elev_m  = ref_value_f; rref_geo_mask |= 4; if (rref_geo_mask == 7) { rref_geo_valid = true; } break;
+
+    // --- Attitude (X-Plane theta=pitch, phi=roll, psi=true heading, degrees) ---
+    case RREF_THETA: rref_pitch_rad = radians(ref_value_f); rref_att_mask |= 1; if (rref_att_mask == 7) { rref_att_valid = true; } break;
+    case RREF_PHI:   rref_roll_rad  = radians(ref_value_f); rref_att_mask |= 2; if (rref_att_mask == 7) { rref_att_valid = true; } break;
+    case RREF_PSI:   rref_yaw_rad   = radians(ref_value_f); rref_att_mask |= 4; if (rref_att_mask == 7) { rref_att_valid = true; } break;
+
+    case RREF_TAS:   rref_airspeed_mps = ref_value_f; rref_airspeed_valid = true; break;
     }
 }
 
@@ -1220,6 +1404,22 @@ void XPlane::request_drefs(void)
     request_dref("sim/flightmodel/forces/g_axil",  RREF_GAXIL, 100);
     request_dref("sim/flightmodel/forces/g_side",  RREF_GSIDE, 100);
     request_dref("sim/flightmodel/forces/g_nrml",  RREF_GNRML, 100);
+    // Position / velocity / attitude / airspeed via RREF — replaces the DATA@
+    // rows (group 20/21/17/3) so the FDM state no longer depends on X-Plane's
+    // "Data Output" config or its slot ordering. Matches PX4's SimulatorXPlane.
+    request_dref("sim/flightmodel/position/local_x",  RREF_LX, 100);
+    request_dref("sim/flightmodel/position/local_y",  RREF_LY, 100);
+    request_dref("sim/flightmodel/position/local_z",  RREF_LZ, 100);
+    request_dref("sim/flightmodel/position/local_vx", RREF_VX, 100);
+    request_dref("sim/flightmodel/position/local_vy", RREF_VY, 100);
+    request_dref("sim/flightmodel/position/local_vz", RREF_VZ, 100);
+    request_dref("sim/flightmodel/position/latitude",  RREF_LAT,  50);
+    request_dref("sim/flightmodel/position/longitude", RREF_LON,  50);
+    request_dref("sim/flightmodel/position/elevation", RREF_ELEV, 50);
+    request_dref("sim/flightmodel/position/theta", RREF_THETA, 100);
+    request_dref("sim/flightmodel/position/phi",   RREF_PHI,   100);
+    request_dref("sim/flightmodel/position/psi",   RREF_PSI,   100);
+    request_dref("sim/flightmodel/position/true_airspeed", RREF_TAS, 50);
 }
 
 
@@ -1259,6 +1459,13 @@ void XPlane::update(const struct sitl_input &input)
         request_drefs();
     }
     check_reload_dref();
+
+    // Keep simulated time advancing in lockstep with wall-clock (1 ms steps)
+    // regardless of which packet receive_data() handled. RREF-only ticks and
+    // failed-path ticks no longer freeze AP_HAL::millis(), so the SITL GPS
+    // (and any other sensor gated on simulated time) keeps emitting at its
+    // configured rate even when X-Plane's DATA@ stream is sparse.
+    wall_paced_time_advance();
 }
 
 #endif  // AP_SIM_XPLANE_ENABLED

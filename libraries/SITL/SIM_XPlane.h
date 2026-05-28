@@ -215,6 +215,36 @@ private:
     Vector3f rref_accel;
     uint8_t  rref_accel_mask  = 0;  // bit 0=axil, 1=side, 2=nrml; valid when ==7
     bool     rref_accel_valid = false;
+
+    // RREF-sourced FDM state (position / velocity / attitude / airspeed). Read
+    // directly from X-Plane datarefs instead of the DATA@/DSEL rows, matching
+    // PX4's SimulatorXPlane. Once valid these are authoritative over DATA@ in
+    // receive_data()'s finalisation, so the EKF gets a clean, self-subscribed
+    // state stream regardless of X-Plane's "Data Output" configuration.
+    Vector3d rref_pos_ned;          // NED position from local_x/y/z
+    uint8_t  rref_pos_mask   = 0;   // bit 0=x,1=y,2=z; valid when ==7
+    bool     rref_pos_valid  = false;
+    Vector3f rref_vel_ned;          // NED velocity from local_vx/vy/vz
+    uint8_t  rref_vel_mask   = 0;
+    bool     rref_vel_valid  = false;
+    double   rref_lat_deg = 0, rref_lon_deg = 0;
+    float    rref_elev_m = 0;       // m MSL
+    uint8_t  rref_geo_mask   = 0;
+    bool     rref_geo_valid  = false;
+    float    rref_roll_rad = 0, rref_pitch_rad = 0, rref_yaw_rad = 0;
+    uint8_t  rref_att_mask   = 0;
+    bool     rref_att_valid  = false;
+    float    rref_airspeed_mps = 0;
+    bool     rref_airspeed_valid = false;
+
+    // Wall-clock-paced time advance — called once per update() so the SITL
+    // simulated clock tracks real time during X-Plane stalls and between
+    // sparse DATA@ Times rows. Without this, simulated time advances only on
+    // DATA@ Times arrivals (~2 Hz from X-Plane's DSEL), which bottlenecks the
+    // SITL GPS (gated on AP_HAL::millis()) to the same ~2 Hz, failing
+    // AP_GPS::is_healthy()'s 215 ms threshold.
+    uint64_t last_wall_extrap_us = 0;
+    void wall_paced_time_advance(void);
 };
 
 

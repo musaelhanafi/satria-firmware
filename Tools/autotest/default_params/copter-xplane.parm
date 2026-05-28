@@ -127,7 +127,24 @@ INS_GYR_CAL         1
 # Note: INS_ACCOFFS / INS_ACCSCAL already defined above (lines ~40), don't duplicate.
 
 # --- Scheduler ---
-SCHED_LOOP_RATE     100
+# SCHED_LOOP_RATE=200 → gyro-rate prearm threshold is 1.8*200 = 360Hz
+# ([AP_InertialSensor.cpp pre_arm_check_gyro_backend_rate_hz]). The SITL IMU
+# backend resamples at ~550Hz, so 360Hz clears with margin; at the AC default
+# 400Hz loop the threshold is 720Hz and prearm fails
+# "Gyro 0 rate ~550Hz < loop rate*1.8 720Hz". 200Hz keeps more control
+# bandwidth than 100 while still passing. Requires a reboot (and EEPROM wipe).
+SCHED_LOOP_RATE     200
+
+# --- INS: single IMU ---
+# SITL creates 3 IMUs; all read the same X-Plane FDM accel/gyro plus independent
+# noise, and X-Plane's jittery stream makes them momentarily disagree. The
+# arming consistency check (accels_consistent / gyros_consistent) needs them to
+# agree continuously for 10s (AP_ARMING_IMU_CONSISTENCY_CHECK_TIME_MS); any
+# breach resets the timer → "Accels inconsistent" / "Gyros inconsistent".
+# Enabling only IMU0 makes get_accel_count()==1, so the consistency check
+# returns true immediately and the whole family of failures disappears — without
+# relying on ARMING_SKIPCHK to blanket-disable every prearm check.
+INS_ENABLE_MASK     1
 
 # --- INS filters ---
 INS_GYRO_FILTER     20
@@ -171,25 +188,37 @@ ACRO_Y_RATE         40        # max yaw rate from stick (deg/s); matches
 # D-term LPF (5 Hz) to kill any residual high-freq content.
 ATC_RAT_RLL_P       0.100
 ATC_RAT_RLL_I       0.050
-ATC_RAT_RLL_D       0.002
+ATC_RAT_RLL_D       0.008
 ATC_RAT_RLL_FF      0.000
 ATC_RAT_RLL_FLTD    5.0
 ATC_RAT_RLL_IMAX    0.5
 
 # --- Pitch rate PID ---
+# Roll/Pitch D raised 2026-05-28 from 0.002 → 0.008 (4×) following the same
+# pattern that fixed yaw: under clean sensors the rate loop has full authority
+# and the previously-minimal D leaves it underdamped. Live MAVLink test after
+# the yaw-D fix saw roll/pitch swing -16°→+31°→+34°→-62° in ~1 s while climbing
+# straight up in GUIDED — classic underdamped oscillation, same shape yaw had.
 ATC_RAT_PIT_P       0.100
 ATC_RAT_PIT_I       0.050
-ATC_RAT_PIT_D       0.002
+ATC_RAT_PIT_D       0.008
 ATC_RAT_PIT_FF      0.000
 ATC_RAT_PIT_FLTD    5.0
 ATC_RAT_PIT_IMAX    0.5
 
 # --- Yaw rate PID ---
-# PX4 equivalent: MC_YAWRATE_P=2.0 × MC_YAWRATE_K=0.6 = ~1.2 effective P.
-# P<0.5 cannot overcome the X-Plane model's yaw torque → copter spins on throttle.
-ATC_RAT_YAW_P       0.800
+# 2026-05-28: A live MAVLink GUIDED takeoff observed violent yaw oscillation
+# the instant gear friction released — yaw rate ran -400°/s → +342°/s in 0.5 s
+# and flipped the aircraft. EEPROM at the time was already P=0.18, D=0; the
+# previous file value of P=0.8 was stale. So the oscillation is NOT a P-too-high
+# problem — D=0 leaves the yaw loop with no damping. After cleaning up sensors
+# (accel scaling + RREF state) the controller has full authority over the
+# X-Plane model and a tiny disturbance becomes oscillation without damping.
+# Adding D=0.003 to introduce damping; if it still oscillates, raise D first
+# (try 0.006/0.010) before touching P.
+ATC_RAT_YAW_P       0.200
 ATC_RAT_YAW_I       0.020
-ATC_RAT_YAW_D       0.000
+ATC_RAT_YAW_D       0.008
 ATC_RAT_YAW_IMAX    0.5
 
 
