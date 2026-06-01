@@ -118,7 +118,7 @@ void ModeTracking::update()
         plane.g2.tracking_roll_pid.reset_I();
         // Active damping: oppose roll rate to hold wings level.
         const float roll_rate_dps = degrees(ahrs.get_gyro().x);
-        const float damp_cd       = -(roll_rate_dps * 50.0f);
+        const float damp_cd       = -(roll_rate_dps * 15.0f);
         plane.nav_roll_cd = constrain_int32((int32_t)damp_cd,
                                             -plane.roll_limit_cd,
                                              plane.roll_limit_cd);
