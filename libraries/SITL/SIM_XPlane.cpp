@@ -705,9 +705,23 @@ bool XPlane::receive_data(void)
                 // Normalise magnitude to 1 g (scale=1.0 until cal completes).
                 accel_body = rref_accel_filt * accel_scale_factor;
             } else {
-                accel_body.z = -data[5] * GRAVITY_MSS;
-                accel_body.x =  data[6] * GRAVITY_MSS;
-                accel_body.y =  data[7] * GRAVITY_MSS;
+                // Fallback (DATA@ Gload group, no RREF yet): same FRD mapping
+                // as the RREF path above so the EKF sees the same gravity
+                // vector on either path.
+                //   data[5] = g_axil  (longitudinal, +nose-fwd)
+                //   data[6] = g_side  (lateral,      +right wing)
+                //   data[7] = g_nrml  (normal,       +canopy-up)
+                // Sign convention (specific force = -gravity in body frame):
+                //   g_axil>0 (nose-down) → accel.x should be negative → negate
+                //   g_side>0 (slip-right) → accel.y stays positive
+                //   g_nrml>0 (lift up)    → accel.z should be -g at rest → negate
+                // Previously this branch had the components permuted
+                // (.z = -d[5], .x = d[6], .y = d[7]) which puts gravity on
+                // body-Y instead of body-Z on a level airframe and breaks the
+                // EKF attitude solution on HIL when RREF accel hasn't arrived.
+                accel_body.x = -data[5] * GRAVITY_MSS;
+                accel_body.y =  data[6] * GRAVITY_MSS;
+                accel_body.z = -data[7] * GRAVITY_MSS;
             }
             // Hold accel at the stationary specific-force vector pre-arm:
             //   FRD body, level → accel = (0, 0, −g).
@@ -861,10 +875,19 @@ failed:
 */
 void XPlane::wall_paced_time_advance(void)
 {
+    // Real wall-clock reference for pacing. On SITL, AP_HAL::micros64() returns
+    // *simulated* time — using it here would make the pacing circular — so read
+    // the host's monotonic clock directly. On a real board (e.g. fmuv3-hil)
+    // AP_HAL::micros64() *is* the hardware monotonic clock, and ChibiOS's
+    // <time.h> does not define CLOCK_MONOTONIC.
+#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
     struct timespec tp;
     clock_gettime(CLOCK_MONOTONIC, &tp);
     const uint64_t wall_now_us = uint64_t(tp.tv_sec) * 1000000ULL
                                + uint64_t(tp.tv_nsec) / 1000ULL;
+#else
+    const uint64_t wall_now_us = AP_HAL::micros64();
+#endif
     if (last_wall_extrap_us != 0 && wall_now_us - last_wall_extrap_us < 1000) {
         // less than 1 ms of real time since the last advance — wait
         return;
@@ -969,13 +992,22 @@ void XPlane::wall_paced_time_advance(void)
 */
 void XPlane::handle_rref(const uint8_t *pkt, uint32_t len)
 {
-    const uint8_t *p = &pkt[5];
+    // X-Plane batches one or more (code, float) entries after the 5-byte
+    // "RREF\0" header. Iterate over ALL of them — reading only the first
+    // entry per packet leaves later DREFs (e.g. g_side / g_nrml) frozen
+    // at their boot values whenever X-Plane batches, which corrupts the
+    // gravity vector and breaks the EKF attitude solution. PPP/serial
+    // links from fmuv3-HIL tend to batch much more than SITL localhost,
+    // which is why the same firmware was correct on SITL but broken on HIL.
     // Use memcpy to avoid unaligned float/uint32 access on Cortex-M4 (HardFault).
-    uint32_t ref_code;
-    float    ref_value_f;
-    memcpy(&ref_code,    p,     4);
-    memcpy(&ref_value_f, p + 4, 4);
-    switch (ref_code) {
+    size_t off = 5;
+    while (off + 8 <= len) {
+        uint32_t ref_code;
+        float    ref_value_f;
+        memcpy(&ref_code,    pkt + off,     4);
+        memcpy(&ref_value_f, pkt + off + 4, 4);
+        off += 8;
+        switch (ref_code) {
     case RREF_VERSION:
         if (xplane_version == 0) {
             ::printf("XPlane version %.0f\n", ref_value_f);
@@ -1105,7 +1137,8 @@ void XPlane::handle_rref(const uint8_t *pkt, uint32_t len)
     case RREF_PSI:   rref_yaw_rad   = radians(ref_value_f); rref_att_mask |= 4; if (rref_att_mask == 7) { rref_att_valid = true; } break;
 
     case RREF_TAS:   rref_airspeed_mps = ref_value_f; rref_airspeed_valid = true; break;
-    }
+        }   // switch (ref_code)
+    }       // while (off + 8 <= len)
 }
 
 
@@ -1298,7 +1331,7 @@ void XPlane::send_drefs(const struct sitl_input &input)
         return true;
     };
 
-#if HAL_BOARD_SITL
+#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
     // SITL (x86/UDP): no PPP bandwidth limit — send every primary DREF that changed.
     // A quad needs all 4 motor DREFs fresh every scheduler tick (100 Hz) for stable
     // attitude control. Round-robin at 25 Hz is not sufficient.
@@ -1429,11 +1462,18 @@ void XPlane::request_drefs(void)
 void XPlane::update(const struct sitl_input &input)
 {
     if (receive_data()) {
-        // Send motor DREFs every physics frame (local UDP has plenty of bandwidth).
-        // The 40 ms limit was for PPP serial links; local loopback can handle 50 Hz
-        // at ~76 KB/s without issue.  Tighter loop = faster actuator response.
+        // DREF send cadence is bandwidth-bound. Local UDP (SITL) handles 100 Hz
+        // easily (tighter loop = faster actuator response); a PPP serial link
+        // (~10 KB/s) needs the 25 Hz round-robin cadence — at 100 Hz even one
+        // 509-byte DREF per tick (~51 KB/s) overflows the link and starves
+        // X-Plane's reply packets (sending but not replying).
+#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
+        const uint32_t dref_interval_ms = 10;   // 100 Hz — local loopback
+#else
+        const uint32_t dref_interval_ms = 40;   // 25 Hz — PPP bandwidth limit
+#endif
         uint32_t now_ms = AP_HAL::millis();
-        if (now_ms - last_dref_ms >= 10) {
+        if (now_ms - last_dref_ms >= dref_interval_ms) {
             last_dref_ms = now_ms;
             send_drefs(input);
         }

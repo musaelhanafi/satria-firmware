@@ -45,6 +45,13 @@ AIRSPEED_CRUISE     12.0
 AIRSPEED_MIN         9.0
 AIRSPEED_MAX        22.0
 TRIM_THROTTLE       45
+# Pitch attitude offset held in FBWA / CRUISE with centered sticks (degrees).
+# Set to the airframe's level-flight trim pitch so FBWA cruise is hands-off
+# level. Default 0 commands pitch = 0 with centered sticks, which is below
+# this airframe's trim AoA and pitches the nose down on mode entry.
+# 5° matches the equivalent PX4 FW_PSP_OFF for the same X-Plane V-tail.
+# (Newer-ArduPlane name — TRIM_PITCH_CD was renamed to PTCH_TRIM_DEG.)
+PTCH_TRIM_DEG      5.0
 PTCH_LIM_MIN_DEG   -25.0
 PTCH_LIM_MAX_DEG    20.0
 ROLL_LIMIT_DEG      45.0
